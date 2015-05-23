@@ -108,13 +108,17 @@ macro(append_matching_paths result pattern)
 endmacro()
 
 macro(add_external_library name)
+    string(TOUPPER ${name} name_upper)
     find_package(${name} ${ARGN})
+
+    if (NOT ${name}_FOUND AND NOT ${name_upper}_FOUND)
+        message(FATAL_ERROR "could not find ${name} library: ${name}_FOUND")
+    endif()
 
     if("${name}" STREQUAL "Qt" AND QT_USE_FILE)
         include(${QT_USE_FILE})
     endif()
 
-    string(TOUPPER ${name} name_upper)
     include_directories(${${name_upper}_INCLUDE_DIR})
     set(LIBS ${LIBS}
              ${${name_upper}_LIBRARY}

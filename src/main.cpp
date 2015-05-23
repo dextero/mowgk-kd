@@ -1,4 +1,7 @@
+#include <fenv.h>
 #include <iostream>
+
+#include <sandbox/window/window.h>
 
 #include "kd_tree.h"
 
@@ -25,10 +28,103 @@ struct ScopedTimer {
     }
 };
 
+class Accumulator
+{
+    const float mBase;
+    const float mStep;
+    float mAccumulator;
+    bool mRunning;
+
+public:
+    Accumulator(float base,
+                float step = 1.f):
+        mBase(base),
+        mStep(step),
+        mAccumulator(0.f),
+        mRunning(false)
+    {}
+
+    void reset()
+    {
+        mRunning = true;
+        mAccumulator = mBase;
+    }
+
+    void update()
+    {
+        if (mRunning) {
+            mAccumulator += mStep;
+            assert(mAccumulator >= 0.0f);
+        }
+    }
+    void update(float dt)
+    {
+        if (mRunning) {
+            mAccumulator += dt;
+            assert(mAccumulator >= 0.0f);
+        }
+    }
+
+    void stop() { mRunning = false; }
+    float getValue() const { return mAccumulator; }
+    bool running() const { return mRunning; }
+};
+
+
+class TreeVisualizer
+{
+public:
+    TreeVisualizer():
+        wnd(1440, 900)
+    {}
+
+    void show(const kd_tree<double> &)
+    {
+        while (wnd.isOpened()) {
+            handleInput();
+            draw();
+        }
+    }
+
+private:
+    sb::Window wnd;
+
+    void handleInput()
+    {
+        sb::Event e;
+        while (wnd.getEvent(e))
+        {
+            switch (e.type)
+            {
+            case sb::Event::KeyPressed:
+                switch (e.data.key) {
+                case sb::Key::Esc:
+                    wnd.close();
+                    break;
+                default:
+                    break;
+                }
+                break;
+            case sb::Event::WindowClosed:
+                wnd.close();
+                break;
+            default:
+                break;
+            }
+        }
+    }
+
+    void draw()
+    {
+        wnd.clear(sb::Color(0.f, 0.f, 0.5f));
+    }
+};
 
 int main(int /*argc*/,
          char* /*argv*/[])
 {
+    feenableexcept(FE_INVALID | FE_DIVBYZERO | FE_OVERFLOW | FE_UNDERFLOW);
+
     std::unique_ptr<kd_tree<double>> tree;
 
     {
@@ -39,6 +135,9 @@ int main(int /*argc*/,
                                       },
                                       0.25);
     }
+
+    TreeVisualizer visualizer;
+    visualizer.show(*tree.get());
 
     for (double x = 0.0; x < 1.0; x += 0.1) {
         for (double y = 0.0; y < 1.0; y += 0.1) {

@@ -13,7 +13,7 @@ set(ROOT_DIR ${PROJECT_SOURCE_DIR})
 set(LIBRARY_OUTPUT_PATH ${ROOT_DIR}/lib)
 set(EXECUTABLE_OUTPUT_PATH ${ROOT_DIR}/bin)
 
-set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR} ${CMAKE_MODULE_PATH})
+set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/extlibs ${CMAKE_MODULE_PATH})
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0 -D_DEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O2 -DNDEBUG")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -29,9 +29,8 @@ if(DEFINED ENV{SDK_DIR})
 endif()
 
 # external libraries
-find_package(CGAL)
-include_directories(${CGAL_INCLUDE_DIR})
-set(LIBS ${LIBS} ${CGAL_LIBRARY})
+add_external_library(CGAL)
+add_external_library(Sandbox)
 
 # project sources
 include_directories(${ROOT_DIR}/src)
