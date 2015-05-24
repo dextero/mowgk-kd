@@ -42,6 +42,12 @@ public:
         return max((int)axis) - min((int)axis);
     }
 
+    inline Vector_3 size() const {
+        return { xmax() - xmin(),
+                 ymax() - ymin(),
+                 zmax() - zmin() };
+    }
+
     inline Axis get_longest_axis() const {
         double sizes[] = {
             size(Axis::X),

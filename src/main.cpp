@@ -5,7 +5,7 @@
 #include <sandbox/utils/types.h>
 #include <sandbox/utils/timer.h>
 #include <sandbox/window/window.h>
-#include <sandbox/rendering/model.h>
+#include <sandbox/rendering/lineStrip.h>
 
 #include "kd_tree.h"
 
@@ -45,7 +45,7 @@ public:
         mBase(base),
         mStep(step),
         mAccumulator(0.f),
-        mRunning(false)
+        mRunning(true)
     {}
 
     void reset()
@@ -74,6 +74,25 @@ public:
     bool running() const { return mRunning; }
 };
 
+static const std::vector<sb::Vec3> WIREFRAME_BOX_VERTICES {
+    { -0.5, -0.5, -0.5 },
+    { 0.5, -0.5, -0.5 },
+    { 0.5, 0.5, -0.5 },
+    { -0.5, 0.5, -0.5 },
+    { -0.5, -0.5, -0.5 },
+    { -0.5, -0.5, 0.5 },
+    { -0.5, 0.5, 0.5 },
+    { -0.5, 0.5, -0.5 },
+    { 0.5, 0.5, -0.5 },
+    { 0.5, 0.5, 0.5 },
+    { 0.5, -0.5, 0.5 },
+    { 0.5, -0.5, -0.5 },
+    { 0.5, -0.5, 0.5 },
+    { -0.5, -0.5, 0.5 },
+    { -0.5, 0.5, 0.5 },
+    { 0.5, 0.5, 0.5 },
+};
+
 class TreeVisualizer
 {
 public:
@@ -81,10 +100,13 @@ public:
         wnd(1440, 900),
         fpsDeltaTime(0.0f, 0.0f),
         colorShader(gResourceMgr.getShader("proj_basic.vert", "color.frag")),
-        box("box.obj", colorShader)
+        wireframeBox(WIREFRAME_BOX_VERTICES, sb::Color::White, colorShader)
     {
         wnd.lockCursor();
         wnd.hideCursor();
+
+        wnd.getRenderer().enableFeature(sb::Renderer::Feature::AlphaBlending);
+        wnd.getRenderer().enableFeature(sb::Renderer::Feature::DepthTest, false);
 
         wnd.getCamera().lookAt(sb::Vec3(5.f, 5.f, 20.f), sb::Vec3(5.f, 5.f, 0.f));
     }
@@ -114,10 +136,12 @@ private:
     float fpsCounter;      // how many frames have been rendered in fpsUpdateStep time?
     float fpsCurrValue;    // current FPS value
     Accumulator fpsDeltaTime;
-    std::string fpsString;
+    std::string fpsString = "FPS = ???";
 
     std::shared_ptr<sb::Shader> colorShader;
-    sb::Model box;
+    sb::LineStrip wireframeBox;
+
+    size_t highlightLevel = 0;
 
     void handleMouseMoved(const sb::Event& e)
     {
@@ -166,6 +190,14 @@ private:
                 case sb::Key::W: speed.z = SPEED; break;
                 case sb::Key::Q: speed.y = SPEED; break;
                 case sb::Key::Z: speed.y = -SPEED; break;
+                case sb::Key::NumpadAdd:
+                    ++highlightLevel;
+                    break;
+                case sb::Key::NumpadSubtract:
+                    if (highlightLevel > 0) {
+                        --highlightLevel;
+                    }
+                    break;
                 case sb::Key::Esc:
                     wnd.close();
                     break;
@@ -209,7 +241,7 @@ private:
         if (fpsDeltaTime.getValue() >= fpsUpdateStep)
         {
             fpsCurrValue = fpsCounter / fpsUpdateStep;
-            fpsString = "FPS = " + sb::utils::toString(fpsCurrValue);
+            fpsString = "FPS = " + std::to_string(fpsCurrValue);
             fpsDeltaTime.update(-fpsUpdateStep);
             fpsCounter = 0.f;
         }
@@ -217,18 +249,42 @@ private:
         wnd.getCamera().moveRelative(speed);
     }
 
+    void drawTree(const kd_tree<double> &tree,
+                  const sb::Color &color = sb::Color::White,
+                  size_t level = 0)
+    {
+        if (!tree.is_leaf) {
+            drawTree(*tree.data.node.low, sb::Color::Red, level + 1);
+            drawTree(*tree.data.node.high, sb::Color::Green, level + 1);
+        }
+
+        auto center = tree.bounding_box.center();
+        auto scale = tree.bounding_box.size();
+
+        wireframeBox.setPosition(center.x(), center.y(), center.z());
+        wireframeBox.setScale(scale.x(), scale.y(), scale.z());
+        wireframeBox.setColor({ color.r, color.g, color.b,
+                                highlightLevel == level ? 1.0f : 0.05f });
+
+        wnd.draw(wireframeBox);
+    }
+
     void draw(const kd_tree<double> &tree)
     {
         wnd.clear(sb::Color(0.f, 0.f, 0.5f));
 
-        wnd.draw(box);
+        drawTree(tree);
 
+        size_t currLineIdx = 0;
+        std::cout << fpsString << "\n";
         wnd.drawString(fpsString, { 0.0f, 0.0f },
                        (fpsCurrValue > 30.f
                            ? sb::Color::Green
                            : (fpsCurrValue > 20.f ? sb::Color::Yellow
                                                   : sb::Color::Red)),
-                       0);
+                       currLineIdx++);
+        wnd.drawString("highlightLevel = " + std::to_string(highlightLevel),
+                       { 0.0f, 0.0f }, sb::Color::White, currLineIdx++);
 
         wnd.display();
     }
