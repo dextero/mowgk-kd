@@ -6,6 +6,8 @@
 #include <sandbox/utils/timer.h>
 #include <sandbox/window/window.h>
 #include <sandbox/rendering/lineStrip.h>
+#include <sandbox/rendering/model.h>
+#include <sandbox/resources/mesh.h>
 
 #include "kd_tree.h"
 
@@ -93,14 +95,112 @@ static const std::vector<sb::Vec3> WIREFRAME_BOX_VERTICES {
     { 0.5, 0.5, 0.5 },
 };
 
+static const std::vector<sb::Vec3> BOX_VERTICES {
+    { 0.5, 0.5, 0.5 },
+    { 0.5, 0.5, -0.5 },
+    { 0.5, -0.5, 0.5 },
+    { 0.5, -0.5, -0.5 },
+    { -0.5, 0.5, 0.5 },
+    { -0.5, 0.5, -0.5 },
+    { -0.5, -0.5, 0.5 },
+    { -0.5, -0.5, -0.5 },
+};
+
+#define H 0.3f
+#define L 0.1f
+#define M ((H + L) / 2.0f)
+static const std::vector<sb::Color> BOX_COLORS {
+    { M, L, L },
+    { L, M, L },
+    { H, L, L },
+    { L, H, L },
+    { L, L, M },
+    { M, M, L },
+    { L, L, H },
+    { H, H, L },
+};
+#undef M
+#undef H
+#undef L
+
+static const std::vector<uint32_t> BOX_INDICES {
+    0, 1, 2, 1, 2, 3,
+    1, 5, 3, 5, 3, 7,
+    5, 4, 7, 4, 7, 6,
+    4, 0, 2, 0, 2, 6,
+    0, 4, 1, 4, 1, 5,
+    3, 7, 2, 7, 2, 6,
+};
+
+enum class KdChild
+{
+    Invalid,
+    Low,
+    High
+};
+
+class KdTreePath
+{
+public:
+    inline bool empty() const
+    {
+        return path.empty();
+    }
+
+    inline size_t size() const
+    {
+        return path.size();
+    }
+
+    inline void push(KdChild child)
+    {
+        assert(child != KdChild::Invalid);
+
+        path.push_back(child == KdChild::High);
+    }
+
+    inline void pop()
+    {
+        path.pop_back();
+    }
+
+    inline KdChild operator[](size_t idx) const
+    {
+        if (idx >= path.size()) {
+            return KdChild::Invalid;
+        }
+        return path[idx] ? KdChild::High : KdChild::Low;
+    }
+
+    std::string toString() const
+    {
+        std::stringstream ss;
+        for (bool b: path) {
+            ss << (b ? 'H' : 'L');
+        }
+        return ss.str();
+    }
+
+private:
+    std::vector<bool> path;
+};
+
 class TreeVisualizer
 {
 public:
     TreeVisualizer():
         wnd(1440, 900),
         fpsDeltaTime(0.0f, 0.0f),
-        colorShader(gResourceMgr.getShader("proj_basic.vert", "color.frag")),
-        wireframeBox(WIREFRAME_BOX_VERTICES, sb::Color::White, colorShader)
+        colorShader(gResourceMgr.getShader("proj_color.vert", "color.frag")),
+        wireframeBox(WIREFRAME_BOX_VERTICES, sb::Color::White, colorShader),
+        boxMesh(std::make_shared<sb::Mesh>(sb::Mesh::Shape::TriangleStrip,
+                                           BOX_VERTICES,
+                                           std::vector<sb::Vec2>(),
+                                           BOX_COLORS,
+                                           std::vector<sb::Vec3>(),
+                                           BOX_INDICES,
+                                           nullptr)),
+        backgroundBox(boxMesh, colorShader)
     {
         wnd.lockCursor();
         wnd.hideCursor();
@@ -108,7 +208,9 @@ public:
         wnd.getRenderer().enableFeature(sb::Renderer::Feature::AlphaBlending);
         wnd.getRenderer().enableFeature(sb::Renderer::Feature::DepthTest, false);
 
-        wnd.getCamera().lookAt(sb::Vec3(5.f, 5.f, 20.f), sb::Vec3(5.f, 5.f, 0.f));
+        wnd.getCamera().lookAt({-3.f, 2.f, -3.f}, {0.f, 0.f, 0.f});
+
+        backgroundBox.setScale(1000.f);
     }
 
     void show(const kd_tree<double> &tree)
@@ -140,8 +242,10 @@ private:
 
     std::shared_ptr<sb::Shader> colorShader;
     sb::LineStrip wireframeBox;
+    std::shared_ptr<sb::Mesh> boxMesh;
+    sb::Model backgroundBox;
 
-    size_t highlightLevel = 0;
+    KdTreePath highlight;
 
     void handleMouseMoved(const sb::Event& e)
     {
@@ -151,7 +255,7 @@ private:
             int pixelsDtX = (int)e.data.mouse.x - halfSize.x;
             int pixelsDtY = (int)e.data.mouse.y - halfSize.y;
 
-            static const float ROTATION_SPEED = 1.0f;
+            static const float ROTATION_SPEED = 0.3f;
             sb::Radians dtX = sb::Radians(ROTATION_SPEED * (float)pixelsDtX / halfSize.x);
             sb::Radians dtY = sb::Radians(ROTATION_SPEED * (float)pixelsDtY / halfSize.y);
 
@@ -190,13 +294,16 @@ private:
                 case sb::Key::W: speed.z = SPEED; break;
                 case sb::Key::Q: speed.y = SPEED; break;
                 case sb::Key::Z: speed.y = -SPEED; break;
-                case sb::Key::NumpadAdd:
-                    ++highlightLevel;
-                    break;
-                case sb::Key::NumpadSubtract:
-                    if (highlightLevel > 0) {
-                        --highlightLevel;
+                case sb::Key::Numpad0:
+                    if (!highlight.empty()) {
+                        highlight.pop();
                     }
+                    break;
+                case sb::Key::Numpad1:
+                    highlight.push(KdChild::Low);
+                    break;
+                case sb::Key::Numpad2:
+                    highlight.push(KdChild::High);
                     break;
                 case sb::Key::Esc:
                     wnd.close();
@@ -247,15 +354,21 @@ private:
         }
 
         wnd.getCamera().moveRelative(speed);
+        backgroundBox.setPosition(wnd.getCamera().getEye());
     }
 
+    size_t boxesDrawn = 0;
+
     void drawTree(const kd_tree<double> &tree,
-                  const sb::Color &color = sb::Color::White,
-                  size_t level = 0)
+                  sb::Color color = sb::Color::White,
+                  size_t level = 0,
+                  bool match = true)
     {
-        if (!tree.is_leaf) {
-            drawTree(*tree.data.node.low, sb::Color::Red, level + 1);
-            drawTree(*tree.data.node.high, sb::Color::Green, level + 1);
+        if (level < highlight.size() && match && !tree.is_leaf) {
+            KdChild hlChild = highlight[level];
+
+            drawTree(*tree.data.node.low,  sb::Color::Red,   level + 1, match && hlChild == KdChild::Low);
+            drawTree(*tree.data.node.high, sb::Color::Green, level + 1, match && hlChild == KdChild::High);
         }
 
         auto center = tree.bounding_box.center();
@@ -263,27 +376,39 @@ private:
 
         wireframeBox.setPosition(center.x(), center.y(), center.z());
         wireframeBox.setScale(scale.x(), scale.y(), scale.z());
-        wireframeBox.setColor({ color.r, color.g, color.b,
-                                highlightLevel == level ? 1.0f : 0.05f });
+
+        if (level == highlight.size()) {
+            if (match) {
+                color = sb::Color::White;
+            }
+        } else {
+            color.a = 0.1f;
+        }
+        wireframeBox.setColor(color);
 
         wnd.draw(wireframeBox);
+        ++boxesDrawn;
     }
 
     void draw(const kd_tree<double> &tree)
     {
         wnd.clear(sb::Color(0.f, 0.f, 0.5f));
 
+        wnd.draw(backgroundBox);
+
+        boxesDrawn = 0;
         drawTree(tree);
 
         size_t currLineIdx = 0;
-        std::cout << fpsString << "\n";
         wnd.drawString(fpsString, { 0.0f, 0.0f },
                        (fpsCurrValue > 30.f
                            ? sb::Color::Green
                            : (fpsCurrValue > 20.f ? sb::Color::Yellow
                                                   : sb::Color::Red)),
                        currLineIdx++);
-        wnd.drawString("highlightLevel = " + std::to_string(highlightLevel),
+        wnd.drawString("highlight = " + highlight.toString(),
+                       { 0.0f, 0.0f }, sb::Color::White, currLineIdx++);
+        wnd.drawString(std::to_string(boxesDrawn) + " boxes",
                        { 0.0f, 0.0f }, sb::Color::White, currLineIdx++);
 
         wnd.display();
@@ -299,11 +424,11 @@ int main(int /*argc*/,
 
     {
         ScopedTimer timer("generating k-d tree");
-        tree = kd_tree<double>::build({0,0,0,1,1,1},
+        tree = kd_tree<double>::build({-1,-1,-1,1,1,1},
                                       [](double x, double y, double z) {
                                           return x + y + z;
                                       },
-                                      0.25);
+                                      0.5);
     }
 
     TreeVisualizer visualizer;

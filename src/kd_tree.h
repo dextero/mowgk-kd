@@ -273,6 +273,7 @@ struct kd_tree
         }
 
         assert(false);
+        abort();
     }
 };
 
