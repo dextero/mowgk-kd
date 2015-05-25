@@ -181,6 +181,22 @@ public:
         return ss.str();
     }
 
+    const kd_tree<double> *apply(const kd_tree<double> &tree)
+    {
+        const kd_tree<double> *ret = &tree;
+        size_t idx = 0;
+
+        while (!ret->is_leaf && idx < path.size()) {
+            ret = path[idx] ? ret->data.node.high.get()
+                            : ret->data.node.low.get();
+        }
+
+        if (idx >= path.size()) {
+            return nullptr;
+        }
+        return ret;
+    }
+
 private:
     std::vector<bool> path;
 };
@@ -245,7 +261,7 @@ private:
     std::shared_ptr<sb::Mesh> boxMesh;
     sb::Model backgroundBox;
 
-    KdTreePath highlight;
+    KdTreePath selectedPath;
 
     void handleMouseMoved(const sb::Event& e)
     {
@@ -295,15 +311,15 @@ private:
                 case sb::Key::Q: speed.y = SPEED; break;
                 case sb::Key::Z: speed.y = -SPEED; break;
                 case sb::Key::Numpad0:
-                    if (!highlight.empty()) {
-                        highlight.pop();
+                    if (!selectedPath.empty()) {
+                        selectedPath.pop();
                     }
                     break;
                 case sb::Key::Numpad1:
-                    highlight.push(KdChild::Low);
+                    selectedPath.push(KdChild::Low);
                     break;
                 case sb::Key::Numpad2:
-                    highlight.push(KdChild::High);
+                    selectedPath.push(KdChild::High);
                     break;
                 case sb::Key::Esc:
                     wnd.close();
@@ -364,8 +380,8 @@ private:
                   size_t level = 0,
                   bool match = true)
     {
-        if (level < highlight.size() && match && !tree.is_leaf) {
-            KdChild hlChild = highlight[level];
+        if (level < selectedPath.size() && match && !tree.is_leaf) {
+            KdChild hlChild = selectedPath[level];
 
             drawTree(*tree.data.node.low,  sb::Color::Red,   level + 1, match && hlChild == KdChild::Low);
             drawTree(*tree.data.node.high, sb::Color::Green, level + 1, match && hlChild == KdChild::High);
@@ -377,7 +393,7 @@ private:
         wireframeBox.setPosition(center.x(), center.y(), center.z());
         wireframeBox.setScale(scale.x(), scale.y(), scale.z());
 
-        if (level == highlight.size()) {
+        if (level == selectedPath.size()) {
             if (match) {
                 color = sb::Color::White;
             }
@@ -406,10 +422,18 @@ private:
                            : (fpsCurrValue > 20.f ? sb::Color::Yellow
                                                   : sb::Color::Red)),
                        currLineIdx++);
-        wnd.drawString("highlight = " + highlight.toString(),
+        wnd.drawString("selectedPath = " + selectedPath.toString(),
                        { 0.0f, 0.0f }, sb::Color::White, currLineIdx++);
         wnd.drawString(std::to_string(boxesDrawn) + " boxes",
                        { 0.0f, 0.0f }, sb::Color::White, currLineIdx++);
+
+        const kd_tree<double> *selected = selectedPath.apply(tree);
+        if (selected) {
+            wnd.drawString("value = " + (selected->is_leaf
+                                         ? std::to_string(selected->data.leaf.value)
+                                         : "<none>"),
+                           { 0.0f, 0.0f }, sb::Color::White, currLineIdx++);
+        }
 
         wnd.display();
     }

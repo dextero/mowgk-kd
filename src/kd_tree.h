@@ -2,6 +2,10 @@
 #include <memory>
 #include <cassert>
 
+#ifdef _DEBUG
+#   define CGAL_NO_ASSERTIONS
+#endif
+
 #include <CGAL/Cartesian.h>
 #include <CGAL/Vector_3.h>
 #include <CGAL/Bbox_3.h>
@@ -114,10 +118,10 @@ template<typename ElementT,
          typename ErrorEstimator = sampling_scalar_error_estimator<1>>
 struct kd_tree
 {
-    const bool is_leaf;
-    const Bbox_3 bounding_box;
+    bool is_leaf;
+    Bbox_3 bounding_box;
 
-    const union kd_tree_data {
+    union kd_tree_data {
         struct {
             ElementT value;
         } leaf;
