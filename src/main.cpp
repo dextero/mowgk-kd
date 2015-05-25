@@ -435,6 +435,9 @@ private:
                            { 0.0f, 0.0f }, sb::Color::White, currLineIdx++);
         }
 
+        wnd.drawString("WSAD+mouse to move around, numpad 0/1/2 to select cells",
+                       { 0.0f, 0.0f }, sb::Color::White, currLineIdx++);
+
         wnd.display();
     }
 };
