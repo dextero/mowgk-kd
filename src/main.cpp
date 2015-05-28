@@ -189,6 +189,7 @@ public:
         while (!ret->is_leaf && idx < path.size()) {
             ret = path[idx] ? ret->data.node.high.get()
                             : ret->data.node.low.get();
+            ++idx;
         }
 
         if (idx >= path.size()) {
