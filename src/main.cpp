@@ -394,7 +394,7 @@ private:
         wireframeBox.setPosition(center.x(), center.y(), center.z());
         wireframeBox.setScale(scale.x(), scale.y(), scale.z());
 
-        if (level == selectedPath.size()) {
+        if (level == selectedPath.size() || tree.is_leaf) {
             if (match) {
                 color = sb::Color::White;
             }

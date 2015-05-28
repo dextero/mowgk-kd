@@ -72,6 +72,10 @@ public:
         }
     }
 
+    inline double half(Axis axis) const {
+        return (max((int)axis) + min((int)axis)) / 2.0;
+    }
+
     inline double xhalf() const {
         return xmin() + size(Axis::X) / 2.0;
     }
@@ -90,12 +94,37 @@ public:
     }
 };
 
+struct BoxSplit
+{
+    double pos;
+    Axis axis;
+};
+
+class Bbox_3;
+typedef std::function<BoxSplit(const Bbox_3 &bounding_box)> BoxSplitter;
+
+template<typename ElementT>
+struct half_box_splitter
+{
+    static BoxSplit split(const Bbox_3 &bb,
+                          const Function3D<ElementT> &)
+    {
+        Axis split_axis = bb.get_longest_axis();
+
+        return {
+            .pos = bb.half(split_axis),
+            .axis = split_axis
+        };
+    }
+};
+
 template<size_t SamplingGridSize>
 struct sampling_scalar_error_estimator
 {
     static double estimate_error(const Bbox_3 &bb,
                                  const Function3D<double> &func,
-                                 double approximation) {
+                                 double approximation)
+    {
         double error = 0.0;
         double dx = (bb.xmax() - bb.xmin()) / (double)SamplingGridSize;
         double dy = (bb.ymax() - bb.ymin()) / (double)SamplingGridSize;
@@ -115,6 +144,7 @@ struct sampling_scalar_error_estimator
 };
 
 template<typename ElementT,
+         typename BoxSplitter = half_box_splitter<ElementT>,
          typename ErrorEstimator = sampling_scalar_error_estimator<1>>
 struct kd_tree
 {
@@ -208,6 +238,42 @@ struct kd_tree
         }
     {}
 
+    struct SubBoxes
+    {
+        Bbox_3 low;
+        Bbox_3 high;
+    };
+
+    static SubBoxes split_box(const Bbox_3 &bb,
+                              const BoxSplit &split)
+    {
+        Bbox_3 low;
+        Bbox_3 high;
+
+        switch (split.axis) {
+            case Axis::X:
+                low = Bbox_3(bb.xmin(), bb.ymin(), bb.zmin(),
+                             split.pos, bb.ymax(), bb.zmax());
+                high = Bbox_3(split.pos, bb.ymin(), bb.zmin(),
+                              bb.xmax(), bb.ymax(), bb.zmax());
+                break;
+            case Axis::Y:
+                low = Bbox_3(bb.xmin(), bb.ymin(), bb.zmin(),
+                             bb.xmax(), split.pos, bb.zmax());
+                high = Bbox_3(bb.xmin(), split.pos, bb.zmin(),
+                              bb.xmax(), bb.ymax(), bb.zmax());
+                break;
+            case Axis::Z:
+                low = Bbox_3(bb.xmin(), bb.ymin(), bb.zmin(),
+                             bb.xmax(), bb.ymax(), split.pos);
+                high = Bbox_3(bb.xmin(), bb.ymin(), split.pos,
+                              bb.xmax(), bb.ymax(), bb.zmax());
+                break;
+        }
+
+        return { low, high };
+    }
+
     static std::unique_ptr<kd_tree<ElementT>>
     build(const Bbox_3 &bb,
           const Function3D<ElementT> &func,
@@ -220,39 +286,13 @@ struct kd_tree
         if (curr_error < max_error) {
             return std::make_unique<kd_tree<ElementT>>(bb, value);
         } else {
-            Bbox_3 low_bb, high_bb;
-            Axis split_axis = bb.get_longest_axis();
-            double split_pos;
-
-            // TODO: split in a more intelligent way
-            switch (split_axis) {
-            case Axis::X:
-                split_pos = bb.xhalf();
-                low_bb = Bbox_3(bb.xmin(), bb.ymin(), bb.zmin(),
-                                split_pos, bb.ymax(), bb.zmax());
-                high_bb = Bbox_3(split_pos, bb.ymin(), bb.zmin(),
-                                 bb.xmax(), bb.ymax(), bb.zmax());
-                break;
-            case Axis::Y:
-                split_pos = bb.yhalf();
-                low_bb = Bbox_3(bb.xmin(), bb.ymin(), bb.zmin(),
-                                bb.xmax(), split_pos, bb.zmax());
-                high_bb = Bbox_3(bb.xmin(), split_pos, bb.zmin(),
-                                 bb.xmax(), bb.ymax(), bb.zmax());
-                break;
-            case Axis::Z:
-                split_pos = bb.zhalf();
-                low_bb = Bbox_3(bb.xmin(), bb.ymin(), bb.zmin(),
-                                bb.xmax(), bb.ymax(), split_pos);
-                high_bb = Bbox_3(bb.xmin(), bb.ymin(), split_pos,
-                                 bb.xmax(), bb.ymax(), bb.zmax());
-                break;
-            }
+            BoxSplit split = BoxSplitter::split(bb, func);
+            SubBoxes sub_bbs = split_box(bb, split);
 
             return std::make_unique<kd_tree<ElementT>>(
-                    bb, split_axis, split_pos,
-                    std::move(build(low_bb, func, max_error)),
-                    std::move(build(high_bb, func, max_error)));
+                    bb, split.axis, split.pos,
+                    std::move(build(sub_bbs.low, func, max_error)),
+                    std::move(build(sub_bbs.high, func, max_error)));
         }
     }
 
