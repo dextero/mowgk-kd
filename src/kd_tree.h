@@ -304,20 +304,12 @@ struct kd_tree
             return data.leaf.value;
         }
 
-        switch (data.node.split_axis) {
-        case Axis::X:
-            return x < data.node.split_pos ? data.node.low->value_at(x, y, z)
-                                           : data.node.high->value_at(x, y, z);
-        case Axis::Y:
-            return y < data.node.split_pos ? data.node.low->value_at(x, y, z)
-                                           : data.node.high->value_at(x, y, z);
-        case Axis::Z:
-            return z < data.node.split_pos ? data.node.low->value_at(x, y, z)
-                                           : data.node.high->value_at(x, y, z);
-        }
+        assert((int)Axis::X <= (int)data.node.split_axis
+               && (int)data.node.split_axis <= (int)Axis::Z);
 
-        assert(false);
-        abort();
+        double pos = (double[]){ x, y, z }[(int)data.node.split_axis];
+        return pos < data.node.split_pos ? data.node.low->value_at(x, y, z)
+                                         : data.node.high->value_at(x, y, z);
     }
 };
 
