@@ -205,7 +205,7 @@ class TreeVisualizer
 {
 public:
     TreeVisualizer():
-        wnd(1440, 900),
+        wnd(1024, 768),
         fpsDeltaTime(0.0f, 0.0f),
         colorShader(gResourceMgr.getShader("proj_color.vert", "color.frag")),
         wireframeBox(WIREFRAME_BOX_VERTICES, sb::Color::White, colorShader),
