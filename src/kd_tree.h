@@ -16,7 +16,7 @@ typedef Kernel::Point_3 Vector_3;
 template<typename T>
 using Function3D = std::function<T(double x, double y, double z)>;
 
-enum class Axis { X, Y, Z };
+enum class Axis { X = 0, Y = 1, Z = 2 };
 
 constexpr double EPSILON = 1e-5;
 
@@ -118,6 +118,86 @@ struct half_box_splitter
     }
 };
 
+template<typename ElementT, size_t SamplesSize>
+struct gradient_box_splitter
+{
+    static BoxSplit split(const Bbox_3 &bb,
+                          const Function3D<ElementT> &fun)
+    {
+        ElementT sum[] = {0, 0, 0};
+        //printf("[%.3f - %.3f] x ", bb.xmax(), bb.xmin());
+        //printf("[%.3f - %.3f] x ", bb.ymax(), bb.ymin());
+        //printf("[%.3f - %.3f]\n", bb.zmax(), bb.zmin());
+        double samplesSize = (double) SamplesSize;
+        double step_x = (bb.xmax() - bb.xmin()) / samplesSize,
+               step_y = (bb.ymax() - bb.ymin()) / samplesSize,
+               step_z = (bb.zmax() - bb.zmin()) / samplesSize;
+        //printf("step_x = %.3f\n", step_x);
+        //printf("step_y = %.3f\n", step_y);
+        //printf("step_z = %.3f\n", step_z);
+        for (size_t i = 0; i < SamplesSize; i++) {
+            for (size_t j = 0; j < SamplesSize; j++) {
+                for (size_t k = 0; k < SamplesSize; k++) {
+                    double x = bb.xmin() + step_x * (i + 0.5),
+                           y = bb.ymin() + step_y * (j + 0.5),
+                           z = bb.zmin() + step_z * (k + 0.5);
+                    sum[0] += std::abs(fun(x+step_x/2,y,z) - fun(x-step_x/2,y,z));
+                    sum[1] += std::abs(fun(x,y+step_y/2,z) - fun(x,y-step_y/2,z));
+                    sum[2] += std::abs(fun(x,y,z+step_z/2) - fun(x,y,z-step_z/2));
+                }
+            }
+        }
+
+        //printf("sum_x = %.3f\n", sum[0]);
+        //printf("sum_y = %.3f\n", sum[1]);
+        //printf("sum_z = %.3f\n", sum[2]);
+
+        double step[] = {step_x, step_y, step_z};
+        int dim = 0;
+        if (sum[1] > sum[0]) dim = 1;
+        if (sum[2] > std::max<double>(sum[0], sum[1])) dim = 2;
+
+        auto fun_ijk = [fun, dim](double x1, double x2, double x3) {
+            switch (dim) {
+                case 0:
+                    return fun(x1, x2, x3);
+                case 1:
+                    return fun(x2, x3, x1);
+                case 2:
+                    return fun(x3, x1, x2);
+            }
+            return 0.;
+        };
+
+        double sum_half = 0;
+        double best_split;
+        for (size_t i = 0; i < SamplesSize; i++) {
+            for (size_t j = 0; j < SamplesSize; j++) {
+                for (size_t k = 0; k < SamplesSize; k++) {
+                    int dim1 = dim,
+                        dim2 = (dim+1)%3,
+                        dim3 = (dim+2)%3;
+                    double x1 = bb.min(dim1) + step[dim1] * i,
+                           x2 = bb.min(dim2) + step[dim2] * (j + 0.5),
+                           x3 = bb.min(dim3) + step[dim3] * (k + 0.5);
+                    sum_half += std::abs(fun_ijk(x1, x2, x3) - fun_ijk(x1+step[dim1], x2, x3));
+                }
+            }
+            if (2 * sum_half > sum[dim]) {
+                best_split = bb.min(dim) + step[dim] * (i + 0.5);
+                break;
+            }
+        }
+
+        //printf("sum_half = %.3f\n", sum_half);
+
+        return {
+            .pos = best_split,
+            .axis = Axis(dim)
+        };
+    }
+};
+
 template<size_t SamplingGridSize>
 struct sampling_scalar_error_estimator
 {
@@ -145,7 +225,7 @@ struct sampling_scalar_error_estimator
 
 template<typename ElementT,
          typename BoxSplitter = half_box_splitter<ElementT>,
-         typename ErrorEstimator = sampling_scalar_error_estimator<1>>
+         typename ErrorEstimator = sampling_scalar_error_estimator<10>>
 struct kd_tree
 {
     bool is_leaf;
@@ -288,6 +368,8 @@ struct kd_tree
         } else {
             BoxSplit split = BoxSplitter::split(bb, func);
             SubBoxes sub_bbs = split_box(bb, split);
+
+            printf("Split at %.3f along %d\n", split.pos, (int) split.axis);
 
             return std::make_unique<kd_tree<ElementT>>(
                     bb, split.axis, split.pos,

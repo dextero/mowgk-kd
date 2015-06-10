@@ -1,6 +1,7 @@
 #include <fenv.h>
 #include <iostream>
 #include <string>
+#include <cmath>
 
 #include <sandbox/utils/types.h>
 #include <sandbox/utils/timer.h>
@@ -452,11 +453,11 @@ int main(int /*argc*/,
 
     {
         ScopedTimer timer("generating k-d tree");
-        tree = kd_tree<double>::build({-1,-1,-1,1,1,1},
+        tree = kd_tree<double, gradient_box_splitter<double, 10> >::build({-1,-1,-1,1,1,1},
                                       [](double x, double y, double z) {
-                                          return x + y + z;
+                                          return exp(-(x*x+y*y+z*z)/(2*0.1));
                                       },
-                                      0.5);
+                                      0.1);
     }
 
     TreeVisualizer visualizer;
