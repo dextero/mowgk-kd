@@ -124,6 +124,17 @@ static const std::vector<sb::Color> BOX_COLORS {
 #undef H
 #undef L
 
+static const std::vector<sb::Color> BOX_WHITE_COLORS {
+    { 1.0f, 1.0f, 1.0f },
+    { 1.0f, 1.0f, 1.0f },
+    { 1.0f, 1.0f, 1.0f },
+    { 1.0f, 1.0f, 1.0f },
+    { 1.0f, 1.0f, 1.0f },
+    { 1.0f, 1.0f, 1.0f },
+    { 1.0f, 1.0f, 1.0f },
+    { 1.0f, 1.0f, 1.0f },
+};
+
 static const std::vector<uint32_t> BOX_INDICES {
     0, 1, 2, 1, 2, 3,
     1, 5, 3, 5, 3, 7,
@@ -131,6 +142,15 @@ static const std::vector<uint32_t> BOX_INDICES {
     4, 0, 2, 0, 2, 6,
     0, 4, 1, 4, 1, 5,
     3, 7, 2, 7, 2, 6,
+};
+
+static const std::vector<uint32_t> BOX_OUTSIDE_INDICES {
+    0, 2, 1, 2, 1, 3,
+    1, 3, 5, 3, 5, 7,
+    5, 7, 4, 7, 4, 6,
+    4, 2, 0, 2, 0, 6,
+    0, 1, 4, 1, 4, 5,
+    3, 2, 7, 2, 7, 6,
 };
 
 enum class KdChild
@@ -218,6 +238,14 @@ public:
                                            std::vector<sb::Vec3>(),
                                            BOX_INDICES,
                                            nullptr)),
+        solidBoxMesh(std::make_shared<sb::Mesh>(sb::Mesh::Shape::TriangleStrip,
+                                                BOX_VERTICES,
+                                                std::vector<sb::Vec2>(),
+                                                BOX_WHITE_COLORS,
+                                                std::vector<sb::Vec3>(),
+                                                BOX_OUTSIDE_INDICES,
+                                                nullptr)),
+        solidBox(solidBoxMesh, colorShader),
         backgroundBox(boxMesh, colorShader)
     {
         wnd.lockCursor();
@@ -261,6 +289,8 @@ private:
     std::shared_ptr<sb::Shader> colorShader;
     sb::LineStrip wireframeBox;
     std::shared_ptr<sb::Mesh> boxMesh;
+    std::shared_ptr<sb::Mesh> solidBoxMesh;
+    sb::Model solidBox;
     sb::Model backgroundBox;
 
     KdTreePath selectedPath;
@@ -377,12 +407,35 @@ private:
 
     size_t boxesDrawn = 0;
 
+    sb::Color valueToColor(double value) {
+        double hue = sb::math::clamp(value * 255.0, 0.0, 255.0);
+        float red, grn, blu;
+        float i, f, p, q, t;
+
+        hue/=60;
+        i = floor(hue);
+        f = hue-i;
+        p = 0;
+        q = 1*(1-f);
+        t = f;
+        if (i==0) {red=1; grn=t; blu=p;}
+        else if (i==1) {red=q; grn=1; blu=p;}
+        else if (i==2) {red=p; grn=1; blu=t;}
+        else if (i==3) {red=p; grn=q; blu=1;}
+        else if (i==4) {red=t; grn=p; blu=1;}
+        else {red=1; grn=p; blu=q;}
+
+        return { red, grn, blu };
+    }
+
     void drawTree(const kd_tree<double> &tree,
                   sb::Color color = sb::Color::White,
                   size_t level = 0,
                   bool match = true)
     {
-        if (level < selectedPath.size() && match && !tree.is_leaf) {
+        (void)color;
+
+        if (level < selectedPath.size() /*&& match*/ && !tree.is_leaf) {
             KdChild hlChild = selectedPath[level];
 
             drawTree(*tree.data.node.low,  sb::Color::Red,   level + 1, match && hlChild == KdChild::Low);
@@ -392,19 +445,24 @@ private:
         auto center = tree.bounding_box.center();
         auto scale = tree.bounding_box.size();
 
-        wireframeBox.setPosition(center.x(), center.y(), center.z());
-        wireframeBox.setScale(scale.x(), scale.y(), scale.z());
+        sb::Drawable *box = &wireframeBox;
 
-        if (level == selectedPath.size() || tree.is_leaf) {
-            if (match) {
-                color = sb::Color::White;
-            }
-        } else {
-            color.a = 0.1f;
+        if (tree.is_leaf) {
+            box = &solidBox;
         }
-        wireframeBox.setColor(color);
 
-        wnd.draw(wireframeBox);
+        if (tree.is_leaf || level == selectedPath.size()) {
+            box->setPosition(center.x(), center.y(), center.z());
+            box->setScale(scale.x(), scale.y(), scale.z());
+        }
+
+        if (tree.is_leaf) {
+            sb::Color col = valueToColor(tree.data.leaf.value);
+            col.a = 0.1;
+            box->setColor(col);
+        }
+
+        wnd.draw(*box);
         ++boxesDrawn;
     }
 
@@ -457,7 +515,7 @@ int main(int /*argc*/,
                                       [](double x, double y, double z) {
                                           return exp(-(x*x+y*y+z*z)/(2*0.1));
                                       },
-                                      0.1);
+                                      0.2);
     }
 
     TreeVisualizer visualizer;
