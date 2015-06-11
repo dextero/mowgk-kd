@@ -369,7 +369,7 @@ struct kd_tree
             BoxSplit split = BoxSplitter::split(bb, func);
             SubBoxes sub_bbs = split_box(bb, split);
 
-            printf("Split at %.3f along %d\n", split.pos, (int) split.axis);
+            //printf("Split at %.3f along %d\n", split.pos, (int) split.axis);
 
             return std::make_unique<kd_tree<ElementT>>(
                     bb, split.axis, split.pos,

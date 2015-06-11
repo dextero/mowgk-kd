@@ -227,7 +227,7 @@ class TreeVisualizer
 {
 public:
     TreeVisualizer():
-        wnd(1024, 768),
+        wnd(1920, 1020),
         fpsDeltaTime(0.0f, 0.0f),
         colorShader(gResourceMgr.getShader("proj_color.vert", "color.frag")),
         wireframeBox(WIREFRAME_BOX_VERTICES, sb::Color::White, colorShader),
@@ -280,6 +280,7 @@ private:
 
     sb::Window wnd;
     sb::Vec3 speed;
+    bool drawSelection = true;
 
     float fpsCounter;      // how many frames have been rendered in fpsUpdateStep time?
     float fpsCurrValue;    // current FPS value
@@ -352,6 +353,9 @@ private:
                     break;
                 case sb::Key::Numpad2:
                     selectedPath.push(KdChild::High);
+                    break;
+                case sb::Key::Space:
+                    drawSelection = !drawSelection;
                     break;
                 case sb::Key::Esc:
                     wnd.close();
@@ -428,18 +432,46 @@ private:
         return { red, grn, blu };
     }
 
+    void drawTreeSelection(const kd_tree<double> &tree,
+                           sb::Color color = sb::Color::White,
+                           size_t level = 0,
+                           bool match = true)
+    {
+        if (level < selectedPath.size() && match && !tree.is_leaf) {
+            KdChild hlChild = selectedPath[level];
+
+            drawTreeSelection(*tree.data.node.low,  sb::Color::Red,   level + 1, match && hlChild == KdChild::Low);
+            drawTreeSelection(*tree.data.node.high, sb::Color::Green, level + 1, match && hlChild == KdChild::High);
+        }
+
+        auto center = tree.bounding_box.center();
+        auto scale = tree.bounding_box.size();
+
+        wireframeBox.setPosition(center.x(), center.y(), center.z());
+        wireframeBox.setScale(scale.x(), scale.y(), scale.z());
+
+        if (level == selectedPath.size()) {
+            if (match) {
+                color = sb::Color::White;
+            }
+        } else {
+            color.a = 0.1f;
+        }
+        wireframeBox.setColor(color);
+
+        wnd.draw(wireframeBox);
+        ++boxesDrawn;
+    }
+
     void drawTree(const kd_tree<double> &tree,
-                  sb::Color color = sb::Color::White,
                   size_t level = 0,
                   bool match = true)
     {
-        (void)color;
-
         if (level < selectedPath.size() /*&& match*/ && !tree.is_leaf) {
             KdChild hlChild = selectedPath[level];
 
-            drawTree(*tree.data.node.low,  sb::Color::Red,   level + 1, match && hlChild == KdChild::Low);
-            drawTree(*tree.data.node.high, sb::Color::Green, level + 1, match && hlChild == KdChild::High);
+            drawTree(*tree.data.node.low,  level + 1, match && hlChild == KdChild::Low);
+            drawTree(*tree.data.node.high, level + 1, match && hlChild == KdChild::High);
         }
 
         auto center = tree.bounding_box.center();
@@ -473,7 +505,12 @@ private:
         wnd.draw(backgroundBox);
 
         boxesDrawn = 0;
-        drawTree(tree);
+
+        if (drawSelection) {
+            drawTreeSelection(tree);
+        } else {
+            drawTree(tree);
+        }
 
         size_t currLineIdx = 0;
         wnd.drawString(fpsString, { 0.0f, 0.0f },
@@ -483,6 +520,8 @@ private:
                                                   : sb::Color::Red)),
                        currLineIdx++);
         wnd.drawString("selectedPath = " + selectedPath.toString(),
+                       { 0.0f, 0.0f }, sb::Color::White, currLineIdx++);
+        wnd.drawString("drawSelection = " + std::to_string(drawSelection),
                        { 0.0f, 0.0f }, sb::Color::White, currLineIdx++);
         wnd.drawString(std::to_string(boxesDrawn) + " boxes",
                        { 0.0f, 0.0f }, sb::Color::White, currLineIdx++);
