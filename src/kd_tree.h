@@ -52,6 +52,9 @@ public:
                  zmax() - zmin() };
     }
 
+    /**
+     * Returns the axis along which the box is the largest.
+     */
     inline Axis get_longest_axis() const {
         double sizes[] = {
             size(Axis::X),
@@ -72,16 +75,28 @@ public:
         }
     }
 
+    /**
+     * Returns the \p axis coordinate of the center of the box.
+     */
     inline double half(Axis axis) const {
         return (max((int)axis) + min((int)axis)) / 2.0;
     }
 
+    /**
+     * Returns the x coordinate of the center of the box.
+     */
     inline double xhalf() const {
         return xmin() + size(Axis::X) / 2.0;
     }
+    /**
+     * Returns the y coordinate of the center of the box.
+     */
     inline double yhalf() const {
         return ymin() + size(Axis::Y) / 2.0;
     }
+    /**
+     * Returns the z coordinate of the center of the box.
+     */
     inline double zhalf() const {
         return zmin() + size(Axis::Z) / 2.0;
     }
@@ -94,6 +109,9 @@ public:
     }
 };
 
+/**
+ * Defines how the current box should be split.
+ */
 struct BoxSplit
 {
     double pos;
@@ -103,6 +121,9 @@ struct BoxSplit
 class Bbox_3;
 typedef std::function<BoxSplit(const Bbox_3 &bounding_box)> BoxSplitter;
 
+/**
+ * Splits the box in the middle along the longest axis.
+ */
 template<typename ElementT>
 struct half_box_splitter
 {
@@ -118,6 +139,38 @@ struct half_box_splitter
     }
 };
 
+/**
+ * Splits the box according to gradient of the represented function.
+ *
+ * The current box is split into SamplesSize segments along the axes.
+ * Let's introduce split boxes numbering, \f$ S_{i,j,k} \f$
+ * where \f$ i,j,k \in [1, \, \text{SamplesSize}] = [1,\,N] \f$.
+ * Then we will consider gradient to be the difference of function value
+ * between two faces of the box \f$ S_{i,j,k} \f$, i.e.
+ * \f{equation}{
+ *   \nabla^x_{i,j,k} = f(x_m+\frac{1}{2}d_x, y_m, z_m) - f(x_m-\frac{1}{2}d_x, y_m, z_m)
+ * \f}
+ * where \f$ d_x \f$ is the size of the box along the x axis
+ *   and \f$ x_m, y_m, z_m \f$ are the coordinates of the box's center.
+ *
+ * For each dimension (x, y and z) the sums of absolute values of
+ * gradient are computed as
+ * \f{equation}{
+ *   \Sigma_x = \sum\limits_{i=1}^N \sum\limits_{j=1}^N \sum\limits_{k=1}^N \left| \nabla^x_{i,j,k} \right|
+ *   \text{ .}
+ * \f}
+ * The axis with the largest sum of gradients is then chosen to be split along.
+ *
+ * In order to determine the point of split, a value of T is obtained
+ * \f{equation}{
+ *   T = \min \{ t \mid
+ *         \sum\limits_{i=1}^t \sum\limits_{j=1}^N \sum\limits_{k=1}^N
+ *           \left| \nabla^x_{i,j,k} \right| > \Sigma_x \}
+ * \f}
+ * The box is split at the position \f$ x_m \f$ of the box \f$ S_{T,j,k} \f$
+ * where \f$ j, k \in [1,\,N] \f$.
+ *
+ */
 template<typename ElementT, size_t SamplesSize>
 struct gradient_box_splitter
 {
@@ -125,16 +178,10 @@ struct gradient_box_splitter
                           const Function3D<ElementT> &fun)
     {
         ElementT sum[] = {0, 0, 0};
-        //printf("[%.3f - %.3f] x ", bb.xmax(), bb.xmin());
-        //printf("[%.3f - %.3f] x ", bb.ymax(), bb.ymin());
-        //printf("[%.3f - %.3f]\n", bb.zmax(), bb.zmin());
         double samplesSize = (double) SamplesSize;
         double step_x = (bb.xmax() - bb.xmin()) / samplesSize,
                step_y = (bb.ymax() - bb.ymin()) / samplesSize,
                step_z = (bb.zmax() - bb.zmin()) / samplesSize;
-        //printf("step_x = %.3f\n", step_x);
-        //printf("step_y = %.3f\n", step_y);
-        //printf("step_z = %.3f\n", step_z);
         for (size_t i = 0; i < SamplesSize; i++) {
             for (size_t j = 0; j < SamplesSize; j++) {
                 for (size_t k = 0; k < SamplesSize; k++) {
@@ -147,10 +194,6 @@ struct gradient_box_splitter
                 }
             }
         }
-
-        //printf("sum_x = %.3f\n", sum[0]);
-        //printf("sum_y = %.3f\n", sum[1]);
-        //printf("sum_z = %.3f\n", sum[2]);
 
         double step[] = {step_x, step_y, step_z};
         int dim = 0;
@@ -189,8 +232,6 @@ struct gradient_box_splitter
             }
         }
 
-        //printf("sum_half = %.3f\n", sum_half);
-
         return {
             .pos = best_split,
             .axis = Axis(dim)
@@ -198,6 +239,9 @@ struct gradient_box_splitter
     }
 };
 
+/**
+ * Computes maximum error in specified box with given sampling.
+ */
 template<size_t SamplingGridSize>
 struct sampling_scalar_error_estimator
 {
@@ -223,6 +267,14 @@ struct sampling_scalar_error_estimator
     }
 };
 
+/**
+ * Represents the kd-tree.
+ *
+ * Each element can be a parent or leaf.
+ * If it is a leaf then an approximated value is associated with it.
+ * If it is a parent it holds information about the way it is split
+ * and the two children.
+ */
 template<typename ElementT,
          typename BoxSplitter = half_box_splitter<ElementT>,
          typename ErrorEstimator = sampling_scalar_error_estimator<10>>
@@ -232,6 +284,10 @@ struct kd_tree
     Bbox_3 bounding_box;
 
     union kd_tree_data {
+        /**
+         * Depending on the type of the node it can represent numerical value
+         * or two children.
+         */
         struct {
             ElementT value;
         } leaf;
@@ -290,6 +346,9 @@ struct kd_tree
         return *this;
     }
 
+    /**
+     * Constructs a leaf node.
+     */
     kd_tree(const Bbox_3 &bounding_box,
             const ElementT &value):
         is_leaf(true),
@@ -301,6 +360,9 @@ struct kd_tree
         }
     {}
 
+    /**
+     * Constructs a parent node.
+     */
     kd_tree(const Bbox_3 &bounding_box,
             Axis split_axis,
             double split_pos,
@@ -324,6 +386,9 @@ struct kd_tree
         Bbox_3 high;
     };
 
+    /**
+     * Splits the box bb into two boxes according to information about the split.
+     */
     static SubBoxes split_box(const Bbox_3 &bb,
                               const BoxSplit &split)
     {
@@ -354,6 +419,17 @@ struct kd_tree
         return { low, high };
     }
 
+    /**
+     * Builds the kd-tree for the specified parameters.
+     *
+     * The tree is built recursively using \p BoxSplitter and \p ErrorEstimator
+     * to guide its creation.
+     *
+     * @param[in] bb the bounding box of the tree
+     * @param[in] func the function to represent with the tree
+     * @param[in] max_error the largest accepted error between the \p func and
+     *                      the tree's approximation
+     */
     static std::unique_ptr<kd_tree<ElementT>>
     build(const Bbox_3 &bb,
           const Function3D<ElementT> &func,
@@ -378,6 +454,9 @@ struct kd_tree
         }
     }
 
+    /**
+     * Returns the approximated value at specified point.
+     */
     ElementT value_at(double x, double y, double z)
     {
         assert(bounding_box.contains(x, y, z));
