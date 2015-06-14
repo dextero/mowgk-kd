@@ -8,7 +8,9 @@ The implemented class approximates given 3D function with an arbitrary precision
 \* precision depends on accuracy of supplied error estimator.
 
 Example usage:
-```lang=cpp
+--------------
+
+```lang=c++
 // volume represented by the tree
 Bbox_3 kd_tree_box = {-1, -1, -1, 1, 1, 1};
 // approximated function
