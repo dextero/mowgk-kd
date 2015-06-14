@@ -10,7 +10,10 @@
 #include <sandbox/rendering/model.h>
 #include <sandbox/resources/mesh.h>
 
+// allow kd-tree structure inspection
+#define private public
 #include "kd_tree.h"
+#undef private
 
 struct ScopedTimer {
     std::string msg;

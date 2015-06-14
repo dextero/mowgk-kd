@@ -2,6 +2,7 @@
 #include <memory>
 #include <cassert>
 
+// CGAL assertions fail under valgrind, disable them for debugging
 #ifdef _DEBUG
 #   define CGAL_NO_ASSERTIONS
 #endif
@@ -20,6 +21,11 @@ enum class Axis { X = 0, Y = 1, Z = 2 };
 
 constexpr double EPSILON = 1e-5;
 
+/**
+ * 3D axis-aligned box.
+ *
+ * Adds some auxiliary methods to the CGAL::Bbox_3 class.
+ */
 class Bbox_3: public CGAL::Bbox_3
 {
 public:
@@ -36,16 +42,25 @@ public:
         CGAL::Bbox_3(xmin, ymin, zmin, xmax, ymax, zmax)
     {}
 
+    /**
+     * Returns the exact middle of the box.
+     */
     inline Vector_3 center() const {
         return { (xmin() + xmax()) / 2.0,
                  (ymin() + ymax()) / 2.0,
                  (zmin() + zmax()) / 2.0 };
     }
 
+    /**
+     * Returns the box width along given \p axis.
+     */
     inline double size(Axis axis) const {
         return max((int)axis) - min((int)axis);
     }
 
+    /**
+     * Returns the box width/height/depth as a 3D vector.
+     */
     inline Vector_3 size() const {
         return { xmax() - xmin(),
                  ymax() - ymin(),
@@ -101,6 +116,9 @@ public:
         return zmin() + size(Axis::Z) / 2.0;
     }
 
+    /**
+     * Checks if the box contains the { \p x, \p y, \p z } point.
+     */
     inline bool contains(double x, double y, double z) const
     {
         return xmin() <= x && x <= xmax()
@@ -114,14 +132,13 @@ public:
  */
 struct BoxSplit
 {
-    double pos;
-    Axis axis;
+    double pos; /**< Split position on given \p axis. */
+    Axis axis;  /**< The axis along which the box should be split. */
 };
 
-class Bbox_3;
-typedef std::function<BoxSplit(const Bbox_3 &bounding_box)> BoxSplitter;
-
 /**
+ * An example implementation of the BoxSplitter (see \ref kd_tree).
+ *
  * Splits the box in the middle along the longest axis.
  */
 template<typename ElementT>
@@ -140,6 +157,8 @@ struct half_box_splitter
 };
 
 /**
+ * An example implementation of the BoxSplitter (see \ref kd_tree).
+ *
  * Splits the box according to gradient of the represented function.
  *
  * The current box is split into SamplesSize segments along the axes.
@@ -240,11 +259,26 @@ struct gradient_box_splitter
 };
 
 /**
+ * An example implementation of an ErrorEstimator (see \ref kd_tree).
+ *
  * Computes maximum error in specified box with given sampling.
  */
 template<size_t SamplingGridSize>
 struct sampling_scalar_error_estimator
 {
+    /**
+     * Returns an error estimation computed as a maximum difference between
+     * \p approximation and the \p func values for points from the \p bb,
+     * arranged in a regular \p SamplingGridSize x \p SamplingGridSize x
+     * \p SamplingGridSize grid.
+     *
+     * \param[in]\ bb            box to take samples from.
+     * \param[in]\ func          function applied on every sample from \p bb.
+     * \param[in]\ approximation \p func approximation for the entire \p bb area.
+     *
+     * \returns Estimated absolute error between \p approximation and \p func
+     *          value for points from \p bb.
+     */
     static double estimate_error(const Bbox_3 &bb,
                                  const Function3D<double> &func,
                                  double approximation)
@@ -274,38 +308,75 @@ struct sampling_scalar_error_estimator
  * If it is a leaf then an approximated value is associated with it.
  * If it is a parent it holds information about the way it is split
  * and the two children.
+ *
+ * \param ElementT    type of elements stored in the tree.
+ * \param BoxSplitter functor used to determine optimal split position for
+ *                    given area.
+ * \param ErrorEstimator functor used to estimate maximum error between the
+ *                       actual function value and computed approximation.
  */
 template<typename ElementT,
          typename BoxSplitter = half_box_splitter<ElementT>,
          typename ErrorEstimator = sampling_scalar_error_estimator<10>>
-struct kd_tree
+class kd_tree final
 {
-    bool is_leaf;
-    Bbox_3 bounding_box;
+public:
+    /**
+     * Builds the kd-tree for the specified parameters.
+     *
+     * The tree is built recursively using \p BoxSplitter and \p ErrorEstimator
+     * to guide its creation.
+     *
+     * \param[in] bb        volume represented by the tree.
+     * \param[in] func      function to approximate with the tree.
+     * \param[in] max_error largest accepted error between the \p func and
+     *                      tree's approximation.
+     *
+     * \returns constructed kd-tree.
+     */
+    static std::unique_ptr<kd_tree<ElementT>>
+    build(const Bbox_3 &bb,
+          const Function3D<ElementT> &func,
+          double max_error)
+    {
+        Vector_3 center = bb.center();
+        double value = func(center.x(), center.y(), center.z());
+        double curr_error = ErrorEstimator::estimate_error(bb, func, value);
 
-    union kd_tree_data {
-        /**
-         * Depending on the type of the node it can represent numerical value
-         * or two children.
-         */
-        struct {
-            ElementT value;
-        } leaf;
-        struct {
-            Axis split_axis;
-            double split_pos;
-            std::unique_ptr<kd_tree> low;
-            std::unique_ptr<kd_tree> high;
-        } node;
+        if (curr_error < max_error) {
+            return std::make_unique<kd_tree<ElementT>>(bb, value);
+        } else {
+            BoxSplit split = BoxSplitter::split(bb, func);
+            SubBoxes sub_bbs = split_box(bb, split);
 
-        // TODO: hack (1/2)
-        // unique_ptrs are conditionally freed in ~kd_tree
-        ~kd_tree_data() {}
-    } data;
+            return std::make_unique<kd_tree<ElementT>>(
+                    bb, split,
+                    std::move(build(sub_bbs.low, func, max_error)),
+                    std::move(build(sub_bbs.high, func, max_error)));
+        }
+    }
+
+    /**
+     * Returns the approximated function value at specified point.
+     */
+    ElementT value_at(double x, double y, double z)
+    {
+        assert(bounding_box.contains(x, y, z));
+
+        if (is_leaf) {
+            return data.leaf.value;
+        }
+
+        assert((int)Axis::X <= (int)data.node.split.axis
+               && (int)data.node.split.axis <= (int)Axis::Z);
+
+        double pos = (double[]){ x, y, z }[(int)data.node.split.axis];
+        return pos < data.node.split.pos ? data.node.low->value_at(x, y, z)
+                                         : data.node.high->value_at(x, y, z);
+    }
 
     ~kd_tree()
     {
-        // TODO: hack (2/2)
         if (is_leaf) {
             data.node.low.~unique_ptr();
             data.node.high.~unique_ptr();
@@ -316,6 +387,7 @@ struct kd_tree
     {
         *this = src;
     }
+
     kd_tree(kd_tree &&src)
     {
         *this = std::move(src);
@@ -346,8 +418,44 @@ struct kd_tree
         return *this;
     }
 
+private:
+    bool is_leaf;        /**< True for leaf nodes, false otherwise */
+    Bbox_3 bounding_box; /**< The volume represented by the tree */
+
     /**
-     * Constructs a leaf node.
+     * Node-specific data. Implemented as an union to save sizeof(ElementT)
+     * bytes per node.
+     */
+    union kd_tree_data {
+        /**
+         * Leaf node data.
+         */
+        struct {
+            ElementT value; /**< Approximate function value for the \ref kd_tree#bounding_box volume */
+        } leaf;
+        /**
+         * Parent node data.
+         */
+        struct {
+            BoxSplit split;                /**< Split details. */
+            std::unique_ptr<kd_tree> low;  /**< Node below the \p split */
+            std::unique_ptr<kd_tree> high; /**< Node above the \p split */
+        } node;
+
+        /**
+         * HACK: C++ requires non-POD unions to have an explicit destructor
+         * defined. unique_ptrs are conditionally freed in ~kd_tree instead of
+         * here.
+         */
+        ~kd_tree_data() {}
+    } data;
+
+    /**
+     * Constructs a leaf node that approximates the function value on the entire
+     * \p bounding_box with \p value.
+     *
+     * \param[in] bounding_box volume represented by the node.
+     * \param[in] value        function value approximation for the \p bounding_box.
      */
     kd_tree(const Bbox_3 &bounding_box,
             const ElementT &value):
@@ -362,24 +470,31 @@ struct kd_tree
 
     /**
      * Constructs a parent node.
+     *
+     * \param[in] bounding_box volume represented by the node.
+     * \param[in] split        volume split details.
+     * \param[in] low          node representing the volume below the \p split.
+     * \param[in] high         node representing the volume above the \p split.
      */
     kd_tree(const Bbox_3 &bounding_box,
-            Axis split_axis,
-            double split_pos,
+            BoxSplit split,
             std::unique_ptr<kd_tree> &&low,
             std::unique_ptr<kd_tree> &&high):
         is_leaf(false),
         bounding_box(bounding_box),
         data {
             .node = {
-                .split_axis = split_axis,
-                .split_pos = split_pos,
+                .split = split,
                 .low = std::move(low),
                 .high = std::move(high)
             }
         }
     {}
 
+    /**
+     * Auxiliary struct to allow returning multiple values from the
+     * \ref kd_tree#split_box.
+     */
     struct SubBoxes
     {
         Bbox_3 low;
@@ -387,7 +502,7 @@ struct kd_tree
     };
 
     /**
-     * Splits the box bb into two boxes according to information about the split.
+     * Splits the \p bb into two boxes according to \p split.
      */
     static SubBoxes split_box(const Bbox_3 &bb,
                               const BoxSplit &split)
@@ -417,60 +532,6 @@ struct kd_tree
         }
 
         return { low, high };
-    }
-
-    /**
-     * Builds the kd-tree for the specified parameters.
-     *
-     * The tree is built recursively using \p BoxSplitter and \p ErrorEstimator
-     * to guide its creation.
-     *
-     * @param[in] bb the bounding box of the tree
-     * @param[in] func the function to represent with the tree
-     * @param[in] max_error the largest accepted error between the \p func and
-     *                      the tree's approximation
-     */
-    static std::unique_ptr<kd_tree<ElementT>>
-    build(const Bbox_3 &bb,
-          const Function3D<ElementT> &func,
-          double max_error)
-    {
-        Vector_3 center = bb.center();
-        double value = func(center.x(), center.y(), center.z());
-        double curr_error = ErrorEstimator::estimate_error(bb, func, value);
-
-        if (curr_error < max_error) {
-            return std::make_unique<kd_tree<ElementT>>(bb, value);
-        } else {
-            BoxSplit split = BoxSplitter::split(bb, func);
-            SubBoxes sub_bbs = split_box(bb, split);
-
-            //printf("Split at %.3f along %d\n", split.pos, (int) split.axis);
-
-            return std::make_unique<kd_tree<ElementT>>(
-                    bb, split.axis, split.pos,
-                    std::move(build(sub_bbs.low, func, max_error)),
-                    std::move(build(sub_bbs.high, func, max_error)));
-        }
-    }
-
-    /**
-     * Returns the approximated value at specified point.
-     */
-    ElementT value_at(double x, double y, double z)
-    {
-        assert(bounding_box.contains(x, y, z));
-
-        if (is_leaf) {
-            return data.leaf.value;
-        }
-
-        assert((int)Axis::X <= (int)data.node.split_axis
-               && (int)data.node.split_axis <= (int)Axis::Z);
-
-        double pos = (double[]){ x, y, z }[(int)data.node.split_axis];
-        return pos < data.node.split_pos ? data.node.low->value_at(x, y, z)
-                                         : data.node.high->value_at(x, y, z);
     }
 };
 
