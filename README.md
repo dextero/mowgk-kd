@@ -10,7 +10,7 @@ The implemented class approximates given 3D function with an arbitrary precision
 Example usage:
 --------------
 
-```lang=c++
+```c++
 // volume represented by the tree
 Bbox_3 kd_tree_box = {-1, -1, -1, 1, 1, 1};
 // approximated function
