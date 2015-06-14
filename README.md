@@ -24,24 +24,8 @@ $ cmake -DCMAKE_INSTALL_PREFIX=<your_install_path> ..
 $ make install
 ```
 
-Tree visualizer
----------------
-
-The project contains an example app that shows the structure of constructed kd-tree. To run it, use:
-
-```bash
-$ make visualizer
-$ ./bin/kd
-```
-
-To install required libraries under Ubuntu:
-
-```bash
-$ sudo apt-get install libgl1-mesa-dev libglu1-mesa-dev libglew-dev libx11-dev libdevil-dev libassimp-dev
-```
-
-Example usage:
---------------
+Example usage
+-------------
 
 ```c++
 // volume represented by the tree
@@ -67,4 +51,20 @@ std::unique_ptr<KdTree> tree = KdTree::build(kd_tree_box, function, required_acc
 
 // tree sampling
 double approximate_value = tree->value_at(x, y, z);
+```
+
+Tree visualizer
+---------------
+
+The project contains an example app that shows the structure of constructed kd-tree. To run it, use:
+
+```bash
+$ make visualizer
+$ ./bin/kd
+```
+
+To install required libraries under Ubuntu:
+
+```bash
+$ sudo apt-get install libgl1-mesa-dev libglu1-mesa-dev libglew-dev libx11-dev libdevil-dev libassimp-dev
 ```
