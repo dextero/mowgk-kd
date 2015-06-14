@@ -45,3 +45,5 @@ add_executable(kd ${SOURCES})
 if(LIBS)
     target_link_libraries(kd ${LIBS})
 endif()
+
+install(FILES include/kd_tree.h DESTINATION include)
