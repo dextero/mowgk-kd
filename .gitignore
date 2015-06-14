@@ -123,7 +123,6 @@ crashlytics-build.properties
 # custom
 /bin/
 /build/
-/data/
 .ycm_extra_conf.*
 tags
 docs

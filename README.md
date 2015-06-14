@@ -7,6 +7,11 @@ The implemented class approximates given 3D function with an arbitrary precision
 
 \* precision depends on accuracy of supplied error estimator.
 
+Installation
+------------
+
+
+
 Example usage:
 --------------
 
@@ -25,7 +30,7 @@ std::unique_ptr<kd_tree<double>> tree = kd_tree<double>::build(kd_tree_box, func
 
 // construction using custom box splitter/error estimator
 using BoxSplitter = gradient_box_splitter<double, 10>;
-using ErrorEstimator = sampling_error_estimator<double, 3>;
+using ErrorEstimator = sampling_scalar_error_estimator<3>;
 
 using KdTree = kd_tree<double, BoxSplitter, ErrorEstimator>;
 
