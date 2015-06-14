@@ -1,5 +1,8 @@
 /**
  * An example kd-tree visualization program.
+ *
+ * For an example on how to use the tree class, see main() function
+ * at the end of file.
  */
 #include <fenv.h>
 #include <iostream>
@@ -18,6 +21,10 @@
 #include "kd_tree.h"
 #undef private
 
+/**
+ * An auxiliary class for easy execution time measurement.
+ * Displays measured time to the standard error stream in its destructor.
+ */
 struct ScopedTimer {
     std::string msg;
     struct timespec start;
@@ -557,14 +564,21 @@ int main(int /*argc*/,
     {
         ScopedTimer timer("generating k-d tree");
 
+        // An example kd-tree construction.
+
+        // volume represented by the tree
         Bbox_3 kd_tree_box = {-1, -1, -1, 1, 1, 1};
+        // approximated function
         auto function = [](double x, double y, double z) {
             return exp(-(x*x+y*y+z*z)/(2*0.1));
         };
+        // maximum allowed error. Note: actual error depends on the accuracy
+        // of the ErrorEstimator template parameter of the kd_tree.
         double required_accuracy = 0.2;
 
         typedef decltype(function(0,0,0)) ElementT;
 
+        // tree construction
         tree = kd_tree<ElementT,
                        gradient_box_splitter<ElementT, 10>
                       >::build(kd_tree_box, function, required_accuracy);
@@ -576,7 +590,9 @@ int main(int /*argc*/,
     for (double x = 0.0; x < 1.0; x += 0.1) {
         for (double y = 0.0; y < 1.0; y += 0.1) {
             for (double z = 0.0; z < 1.0; z += 0.1) {
-                std::cout << x << " " << y << " " << z << " " << tree->value_at(x, y, z) << "\n";
+                std::cout << x << " " << y << " " << z << " "
+                          // kd-tree sampling example
+                          << tree->value_at(x, y, z) << "\n";
             }
         }
         std::cout << "\n";
