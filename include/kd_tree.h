@@ -193,6 +193,8 @@ struct half_box_splitter
 template<typename ElementT, size_t SamplesSize>
 struct gradient_box_splitter
 {
+    static_assert(SamplesSize > 0, "number of samples must be nonzero");
+
     static BoxSplit split(const Bbox_3 &bb,
                           const Function3D<ElementT> &fun)
     {
@@ -201,6 +203,7 @@ struct gradient_box_splitter
         double step_x = (bb.xmax() - bb.xmin()) / samplesSize,
                step_y = (bb.ymax() - bb.ymin()) / samplesSize,
                step_z = (bb.zmax() - bb.zmin()) / samplesSize;
+
         for (size_t i = 0; i < SamplesSize; i++) {
             for (size_t j = 0; j < SamplesSize; j++) {
                 for (size_t k = 0; k < SamplesSize; k++) {
@@ -232,7 +235,7 @@ struct gradient_box_splitter
         };
 
         double sum_half = 0;
-        double best_split;
+        double best_split = 0;
         for (size_t i = 0; i < SamplesSize; i++) {
             for (size_t j = 0; j < SamplesSize; j++) {
                 for (size_t k = 0; k < SamplesSize; k++) {
@@ -266,6 +269,8 @@ struct gradient_box_splitter
 template<size_t SamplingGridSize>
 struct sampling_scalar_error_estimator
 {
+    static_assert(SamplingGridSize > 0, "number of samples must be nonzero");
+
     /**
      * Returns an error estimation computed as a maximum difference between
      * \p approximation and the \p func values for points from the \p bb,

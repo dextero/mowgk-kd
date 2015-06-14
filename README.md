@@ -10,7 +10,7 @@ The implemented class approximates given 3D function with an arbitrary precision
 Installation
 ------------
 
-The projects consists of a single header file (include/kd\_tree.h), but requires the CGAL library to work.
+The projects consists of a single header file (include/kd\_tree.h), but requires a C++14-compatible compiler (e.g. g++ >= 4.9 or clang >= 3.6) and the CGAL library to work.
 
 * super-quick installation (to /usr/local/include):
 ```bash
