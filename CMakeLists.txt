@@ -33,8 +33,8 @@ add_external_library(CGAL)
 add_external_library(Sandbox)
 
 # project sources
-include_directories(${ROOT_DIR}/src)
-find_sources(HEADERS ${ROOT_DIR}/src ".h" "src")
+include_directories(${ROOT_DIR}/include)
+find_sources(HEADERS ${ROOT_DIR}/include ".h" "src")
 find_sources(CXX_SOURCES ${ROOT_DIR}/src ".cpp" "src")
 set(SOURCES ${HEADERS}
             ${CXX_SOURCES})
