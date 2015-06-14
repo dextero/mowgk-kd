@@ -1,3 +1,6 @@
+/**
+ * An example kd-tree visualization program.
+ */
 #include <fenv.h>
 #include <iostream>
 #include <string>
@@ -10,7 +13,7 @@
 #include <sandbox/rendering/model.h>
 #include <sandbox/resources/mesh.h>
 
-// allow kd-tree structure inspection
+// HACK: allow kd-tree structure inspection
 #define private public
 #include "kd_tree.h"
 #undef private
@@ -553,11 +556,18 @@ int main(int /*argc*/,
 
     {
         ScopedTimer timer("generating k-d tree");
-        tree = kd_tree<double, gradient_box_splitter<double, 10> >::build({-1,-1,-1,1,1,1},
-                                      [](double x, double y, double z) {
-                                          return exp(-(x*x+y*y+z*z)/(2*0.1));
-                                      },
-                                      0.2);
+
+        Bbox_3 kd_tree_box = {-1, -1, -1, 1, 1, 1};
+        auto function = [](double x, double y, double z) {
+            return exp(-(x*x+y*y+z*z)/(2*0.1));
+        };
+        double required_accuracy = 0.2;
+
+        typedef decltype(function(0,0,0)) ElementT;
+
+        tree = kd_tree<ElementT,
+                       gradient_box_splitter<ElementT, 10>
+                      >::build(kd_tree_box, function, required_accuracy);
     }
 
     TreeVisualizer visualizer;
