@@ -48,4 +48,17 @@ if(WITH_VISUALIZER)
     endif()
 endif()
 
+if(WITH_BENCHMARK)
+    include_directories(${ROOT_DIR}/include)
+    find_sources(HEADERS ${ROOT_DIR}/include ".h" "src")
+    find_sources(CXX_SOURCES ${ROOT_DIR}/benchmark ".cpp" "src")
+    set(SOURCES ${HEADERS}
+                ${CXX_SOURCES})
+
+    add_executable(benchmark ${SOURCES})
+    if(LIBS)
+        target_link_libraries(benchmark ${LIBS})
+    endif()
+endif()
+
 install(FILES include/kd_tree.h DESTINATION include)
