@@ -22,6 +22,15 @@ enum class Axis { X = 0, Y = 1, Z = 2 };
 constexpr double EPSILON = 1e-5;
 
 /**
+ * Defines how the current box should be split.
+ */
+struct BoxSplit
+{
+    double pos; /**< Split position on given \p axis. */
+    Axis axis;  /**< The axis along which the box should be split. */
+};
+
+/**
  * 3D axis-aligned box.
  *
  * Adds some auxiliary methods to the CGAL::Bbox_3 class.
@@ -125,15 +134,27 @@ public:
             && ymin() <= y && y <= ymax()
             && zmin() <= z && z <= zmax();
     }
-};
 
-/**
- * Defines how the current box should be split.
- */
-struct BoxSplit
-{
-    double pos; /**< Split position on given \p axis. */
-    Axis axis;  /**< The axis along which the box should be split. */
+    /**
+     * Checks if the split is valid for the box. Used only for debugging.
+     */
+    inline bool box_split_valid(const BoxSplit& split) const {
+        bool valid = true;
+
+        switch (split.axis) {
+        case Axis::X: valid = (xmin() < split.pos && split.pos < xmax()); break;
+        case Axis::Y: valid = (ymin() < split.pos && split.pos < ymax()); break;
+        case Axis::Z: valid = (zmin() < split.pos && split.pos < zmax()); break;
+        }
+
+        if (!valid) {
+            fprintf(stderr, "split %f alongside %c is outside box %f, %f, %f - %f, %f %f\n",
+                    split.pos, "XYZ"[(int)split.axis],
+                    xmin(), ymin(), zmin(), xmax(), ymax(), zmax());
+        }
+
+        return valid;
+    }
 };
 
 /**
@@ -512,6 +533,8 @@ private:
     static SubBoxes split_box(const Bbox_3 &bb,
                               const BoxSplit &split)
     {
+        assert(bb.box_split_valid(split));
+
         Bbox_3 low;
         Bbox_3 high;
 
