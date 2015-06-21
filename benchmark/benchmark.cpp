@@ -26,6 +26,38 @@
 #include "kd_tree.h"
 #undef private
 
+struct ScopedTimer {
+    std::function<void(double diff_s)> at_scope_exit;
+    struct timespec start;
+
+    ScopedTimer(const std::function<void()>& at_scope_enter,
+                const std::function<void(double diff_s)>& at_scope_exit):
+        at_scope_exit(at_scope_exit)
+    {
+        if (at_scope_enter) {
+            at_scope_enter();
+        }
+        clock_gettime(CLOCK_REALTIME, &start);
+    }
+
+    ScopedTimer(const std::function<void(double diff_s)>& at_scope_exit):
+        ScopedTimer({}, at_scope_exit)
+    {}
+
+    ~ScopedTimer()
+    {
+        struct timespec end;
+        clock_gettime(CLOCK_REALTIME, &end);
+
+        long diff_ns = (end.tv_sec - start.tv_sec) * 10e9 + (end.tv_nsec - start.tv_nsec);
+        double diff_s = (double)diff_ns / 10e9;
+
+        if (at_scope_exit) {
+            at_scope_exit(diff_s);
+        }
+    }
+};
+
 void print_tree(std::unique_ptr<kd_tree<double>> const &tree, size_t level = 0, size_t offset = 0) {
     if (!tree->is_leaf) {
         printf("%ld %ld\n%ld %ld\n\n", level, offset, level+1, offset*2);
@@ -188,17 +220,25 @@ int main(int argc,
 
     std::vector<double> tolerance = {1, .9, .8, .7, .6, 0.5, 0.4, 0.3, 0.2};
 
+    fprintf(stderr, "splitter build_time_s fun_i tolerance node_count balance.first balance.second error.first error.second\n");
     for (size_t fun_i = from; fun_i <= to; fun_i++) {
         Function3D<double> fun = get_function(fun_i);
         std::for_each(tolerance.begin(), tolerance.end(), [&](const double tolerance) {
-            tree = kd_tree<double,
-                           half_box_splitter<double>
-                          >::build(kd_tree_box, fun, tolerance);
+            double build_time_s;
+
+            {
+                ScopedTimer timer([&build_time_s](double time_s) { build_time_s = time_s; });
+                tree = kd_tree<double,
+                               half_box_splitter<double>
+                              >::build(kd_tree_box, fun, tolerance);
+            }
+
             size_t node_count = count_nodes(tree);
             std::pair<double, double> balance = balance_factor(tree);
             std::pair<double, double> error = tree_error(tree, fun);
 
-            printf("half %ld %f %ld %f %f %f %f\n",
+            printf("half %f %ld %f %ld %f %f %f %f\n",
+                build_time_s,
                 fun_i,
                 tolerance,
                 node_count,
@@ -208,15 +248,19 @@ int main(int argc,
                 error.second);
 
 
-            tree = kd_tree<double,
-                           gradient_box_splitter<double, 10>
-                          >::build(kd_tree_box, fun, tolerance);
+            {
+                ScopedTimer timer([&build_time_s](double time_s) { build_time_s = time_s; });
+                tree = kd_tree<double,
+                               gradient_box_splitter<double, 10>
+                              >::build(kd_tree_box, fun, tolerance);
+            }
 
             node_count = count_nodes(tree);
             balance = balance_factor(tree);
             error = tree_error(tree, fun);
 
-            printf("grad %ld %f %ld %f %f %f %f\n",
+            printf("grad %f %ld %f %ld %f %f %f %f\n",
+                build_time_s,
                 fun_i,
                 tolerance,
                 node_count,
