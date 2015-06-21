@@ -252,11 +252,11 @@ struct gradient_box_splitter
                 case 2:
                     return fun(x3, x1, x2);
             }
-            return 0.;
+            assert(!"unreachable");
         };
 
         double sum_half = 0;
-        double best_split = 0;
+        double best_split = bb.min(dim) + step[dim] * (SamplesSize - 0.5);
         for (size_t i = 0; i < SamplesSize; i++) {
             for (size_t j = 0; j < SamplesSize; j++) {
                 for (size_t k = 0; k < SamplesSize; k++) {
