@@ -164,7 +164,7 @@ Function3D<double> get_function(size_t id) {
                 Point_3 q( 0.5, 1.,  0.);
                 Line_3 line(p, q);
 
-                return sqrt(CGAL::squared_distance<Kernel>(point, line));
+                return CGAL::squared_distance<Kernel>(point, line);
             };
         case 2:
             // proportional to distance from three points

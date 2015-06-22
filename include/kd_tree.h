@@ -219,21 +219,38 @@ struct gradient_box_splitter
     static BoxSplit split(const Bbox_3 &bb,
                           const Function3D<ElementT> &fun)
     {
-        ElementT sum[] = {0, 0, 0};
+        ElementT* cache = (ElementT*)malloc(sizeof(ElementT)*SamplesSize*SamplesSize*SamplesSize);
+
         double samplesSize = (double) SamplesSize;
         double step_x = (bb.xmax() - bb.xmin()) / samplesSize,
                step_y = (bb.ymax() - bb.ymin()) / samplesSize,
                step_z = (bb.zmax() - bb.zmin()) / samplesSize;
 
-        for (size_t i = 0; i < SamplesSize; i++) {
+        for (size_t i = 0, cache_i = 0; i < SamplesSize; i++) {
             for (size_t j = 0; j < SamplesSize; j++) {
-                for (size_t k = 0; k < SamplesSize; k++) {
+                for (size_t k = 0; k < SamplesSize; k++, cache_i++) {
                     double x = bb.xmin() + step_x * (i + 0.5),
                            y = bb.ymin() + step_y * (j + 0.5),
                            z = bb.zmin() + step_z * (k + 0.5);
-                    sum[0] += std::abs(fun(x+step_x/2,y,z) - fun(x-step_x/2,y,z));
-                    sum[1] += std::abs(fun(x,y+step_y/2,z) - fun(x,y-step_y/2,z));
-                    sum[2] += std::abs(fun(x,y,z+step_z/2) - fun(x,y,z-step_z/2));
+                    cache[cache_i] = fun(x,y,z);
+                }
+            }
+        }
+
+        size_t step_i[] = {SamplesSize * SamplesSize,
+                           SamplesSize,
+                           1};
+        auto ind = [&step_i](size_t i, size_t j, size_t k) {
+            return step_i[0] * i + step_i[1] * j + step_i[2] * k;
+        };
+
+        ElementT sum[] = {0, 0, 0};
+        for (size_t i = 0; i < SamplesSize; i++) {
+            for (size_t j = 0; j < SamplesSize; j++) {
+                for (size_t k = 0; k < SamplesSize; k++) {
+                    if (i > 0) sum[0] += std::abs(cache[ind(i,j,k)] - cache[ind(i-1,j,k)]);
+                    if (j > 0) sum[1] += std::abs(cache[ind(i,j,k)] - cache[ind(i,j-1,k)]);
+                    if (k > 0) sum[2] += std::abs(cache[ind(i,j,k)] - cache[ind(i,j,k-1)]);
                 }
             }
         }
@@ -241,39 +258,35 @@ struct gradient_box_splitter
         double step[] = {step_x, step_y, step_z};
         int dim = 0;
         if (sum[1] > sum[0]) dim = 1;
-        if (sum[2] > std::max<double>(sum[0], sum[1])) dim = 2;
+        if (sum[2] > sum[dim]) dim = 2;
 
-        auto fun_ijk = [fun, dim](double x1, double x2, double x3) {
+        auto ind_ijk = [&ind, dim](size_t i, size_t j, size_t k) {
             switch (dim) {
                 case 0:
-                    return fun(x1, x2, x3);
+                    return ind(i,j,k);
                 case 1:
-                    return fun(x2, x3, x1);
+                    return ind(k,i,j);
                 case 2:
-                    return fun(x3, x1, x2);
+                    return ind(j,k,i);
             }
             assert(!"unreachable");
         };
 
         double sum_half = 0;
-        double best_split = bb.min(dim) + step[dim] * (SamplesSize - 0.5);
-        for (size_t i = 0; i < SamplesSize; i++) {
+        double best_split = bb.min(dim) + step[dim] * SamplesSize / 2;
+        for (size_t i = 1; i < SamplesSize; i++) {
             for (size_t j = 0; j < SamplesSize; j++) {
                 for (size_t k = 0; k < SamplesSize; k++) {
-                    int dim1 = dim,
-                        dim2 = (dim+1)%3,
-                        dim3 = (dim+2)%3;
-                    double x1 = bb.min(dim1) + step[dim1] * i,
-                           x2 = bb.min(dim2) + step[dim2] * (j + 0.5),
-                           x3 = bb.min(dim3) + step[dim3] * (k + 0.5);
-                    sum_half += std::abs(fun_ijk(x1, x2, x3) - fun_ijk(x1+step[dim1], x2, x3));
+                    sum_half += std::abs(cache[ind_ijk(i,j,k)] - cache[ind_ijk(i-1,j,k)]);
                 }
             }
             if (2 * sum_half > sum[dim]) {
-                best_split = bb.min(dim) + step[dim] * (i + 0.5);
+                best_split = bb.min(dim) + step[dim] * i;
                 break;
             }
         }
+
+        free(cache);
 
         return {
             .pos = best_split,
