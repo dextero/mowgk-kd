@@ -8,10 +8,12 @@ function die() {
 }
 
 INPUT_FILE="$1"
-PLOTS_DIR="$(readlink -f "plots")"
+PLOTS_DIR="$2"
 
 [[ "$INPUT_FILE" ]] || INPUT_FILE='results.txt'
 [[ -f "$INPUT_FILE" ]] || die "$INPUT_FILE does not exist"
+[[ "$PLOTS_DIR" ]] && PLOTS_DIR="$(readlink -f $PLOTS_DIR)"
+[[ "$PLOTS_DIR" ]] || PLOTS_DIR="$(readlink -f "plots")"
 #[[ ! -d "$PLOTS_DIR" ]] || die "directory $PLOTS_DIR already exists!"
 
 rm -rf "$PLOTS_DIR"
@@ -20,8 +22,10 @@ echo "generating gnuplot script"
 
 TMPFILE="$(mktemp)"
     cat >"$TMPFILE" <<EOF
-set term png size 1024, 768
+#set term png size 600, 400
+set term epslatex color
 set xlabel 'required accuracy'
+set xrange [0:1.1] reverse
 
 set style line 1 lw 2
 set style line 2 lw 2
@@ -37,54 +41,46 @@ for FUNC in 0 1 2 3; do
     awk "{ if (\$1 == \"half\" && \$2 == $FUNC) { print } }" "$INPUT_FILE" >"$HALF_INPUT"
 
     cat >>"$TMPFILE" <<EOF
-set output '$PLOTS_DIR/build_time.$FUNC.png'
-set title '${FUNCTIONS[$FUNC]}, tree build time [s]'
+set output '$PLOTS_DIR/build_time_$FUNC.tex'
+#set title '${FUNCTIONS[$FUNC]}, tree build time [s]'
 set ylabel 'build time [s]'
+set logscale y
 plot \\
-    '$GRAD_INPUT' using 3:4 with lines title 'gradient splitter', \\
-    '$HALF_INPUT' using 3:4 with lines title 'half splitter', \\
+    '$GRAD_INPUT' using 3:4 title 'gradient splitter', \\
+    '$HALF_INPUT' using 3:4 title 'half splitter'
+unset logscale y
 
-set output '$PLOTS_DIR/access_time.$FUNC.png'
-set title '${FUNCTIONS[$FUNC]}, average tree access time [us]'
+set output '$PLOTS_DIR/access_time_$FUNC.tex'
+#set title '${FUNCTIONS[$FUNC]}, average tree access time [us]'
 set ylabel 'access time [us]'
 plot \\
-    '$GRAD_INPUT' using 3:5 with lines title 'gradient splitter', \\
-    '$HALF_INPUT' using 3:5 with lines title 'half splitter', \\
+    '$GRAD_INPUT' using 3:5 title 'gradient splitter', \\
+    '$HALF_INPUT' using 3:5 title 'half splitter', \\
 
-set output '$PLOTS_DIR/nodes_count.$FUNC.png'
-set title '${FUNCTIONS[$FUNC]}, total number of nodes'
-set ylabel '# of nodes'
+set output '$PLOTS_DIR/nodes_count_$FUNC.tex'
+#set title '${FUNCTIONS[$FUNC]}, total number of nodes'
+set ylabel 'number of nodes'
+set logscale y
 plot \\
-    '$GRAD_INPUT' using 3:6 with lines title 'gradient splitter', \\
-    '$HALF_INPUT' using 3:6 with lines title 'half splitter', \\
+    '$GRAD_INPUT' using 3:6 title 'gradient splitter', \\
+    '$HALF_INPUT' using 3:6 title 'half splitter'
+unset logscale y
 
-set output '$PLOTS_DIR/balance_mean.$FUNC.png'
-set title '${FUNCTIONS[$FUNC]}, balance (mean)'
+set output '$PLOTS_DIR/balance_mean_$FUNC.tex'
+#set title '${FUNCTIONS[$FUNC]}, balance (mean)'
 set ylabel 'balance'
 plot \\
-    '$GRAD_INPUT' using 3:7 with lines title 'gradient splitter', \\
-    '$HALF_INPUT' using 3:7 with lines title 'half splitter', \\
+    '$GRAD_INPUT' using 3:(\$8/\$7) title 'gradient splitter', \\
+    '$HALF_INPUT' using 3:(\$8/\$7) title 'half splitter', \\
 
-set output '$PLOTS_DIR/balance_stdev.$FUNC.png'
-set title '${FUNCTIONS[$FUNC]}, tree balance (standard deviation)'
-set ylabel 'balance (stdev)'
+set output '$PLOTS_DIR/error_$FUNC.tex'
+#set title '${FUNCTIONS[$FUNC]}, error'
+set ylabel 'error'
 plot \\
-    '$GRAD_INPUT' using 3:8 with lines title 'gradient splitter', \\
-    '$HALF_INPUT' using 3:8 with lines title 'half splitter', \\
-
-set output '$PLOTS_DIR/error_max.$FUNC.png'
-set title '${FUNCTIONS[$FUNC]}, maximum error'
-set ylabel 'max error'
-plot \\
-    '$GRAD_INPUT' using 3:9 with lines title 'gradient splitter', \\
-    '$HALF_INPUT' using 3:9 with lines title 'half splitter', \\
-
-set output '$PLOTS_DIR/error_mean.$FUNC.png'
-set title '${FUNCTIONS[$FUNC]}, average error'
-set ylabel 'avg error'
-plot \\
-    '$GRAD_INPUT' using 3:10 with lines title 'gradient splitter', \\
-    '$HALF_INPUT' using 3:10 with lines title 'half splitter', \\
+    '$GRAD_INPUT' using 3:9  title 'max gradient splitter', \\
+    '$HALF_INPUT' using 3:9  title 'max half splitter', \\
+    '$GRAD_INPUT' using 3:10 title 'mean gradient splitter', \\
+    '$HALF_INPUT' using 3:10 title 'mean half splitter', \\
 
 EOF
 done
