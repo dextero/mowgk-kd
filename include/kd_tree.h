@@ -219,20 +219,21 @@ struct gradient_box_splitter
     static BoxSplit split(const Bbox_3 &bb,
                           const Function3D<ElementT> &fun)
     {
-        ElementT* cache = (ElementT*)malloc(sizeof(ElementT)*SamplesSize*SamplesSize*SamplesSize);
+        std::vector<ElementT> cache;
+        cache.reserve(SamplesSize*SamplesSize*SamplesSize);
 
         double samplesSize = (double) SamplesSize;
         double step_x = (bb.xmax() - bb.xmin()) / samplesSize,
                step_y = (bb.ymax() - bb.ymin()) / samplesSize,
                step_z = (bb.zmax() - bb.zmin()) / samplesSize;
 
-        for (size_t i = 0, cache_i = 0; i < SamplesSize; i++) {
+        for (size_t i = 0; i < SamplesSize; i++) {
             for (size_t j = 0; j < SamplesSize; j++) {
-                for (size_t k = 0; k < SamplesSize; k++, cache_i++) {
+                for (size_t k = 0; k < SamplesSize; k++) {
                     double x = bb.xmin() + step_x * (i + 0.5),
                            y = bb.ymin() + step_y * (j + 0.5),
                            z = bb.zmin() + step_z * (k + 0.5);
-                    cache[cache_i] = fun(x,y,z);
+                    cache.push_back(fun(x,y,z));
                 }
             }
         }
@@ -285,8 +286,6 @@ struct gradient_box_splitter
                 break;
             }
         }
-
-        free(cache);
 
         return {
             .pos = best_split,
