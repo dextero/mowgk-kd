@@ -54,8 +54,8 @@ struct ScopedTimer {
         struct timespec end;
         clock_gettime(CLOCK_REALTIME, &end);
 
-        long diff_ns = (end.tv_sec - start.tv_sec) * 10e9 + (end.tv_nsec - start.tv_nsec);
-        double diff_s = (double)diff_ns / 10e9;
+        long diff_ns = (end.tv_sec - start.tv_sec) * (long)1e9 + (end.tv_nsec - start.tv_nsec);
+        double diff_s = (double)diff_ns / 1e9;
 
         if (at_scope_exit) {
             at_scope_exit(diff_s);
