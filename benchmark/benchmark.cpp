@@ -44,6 +44,11 @@ struct ScopedTimer {
         ScopedTimer({}, at_scope_exit)
     {}
 
+    ScopedTimer(const std::string& msg):
+        ScopedTimer([msg]() { fprintf(stderr, "%s: start\n", msg.c_str()); },
+                    [msg](double time_s) { fprintf(stderr, "%s: %f s\n", msg.c_str(), time_s); })
+    {}
+
     ~ScopedTimer()
     {
         struct timespec end;
@@ -77,6 +82,8 @@ size_t count_nodes(std::unique_ptr<kd_tree<double>> const &tree) {
 }
 
 std::pair<double, double> balance_factor(std::unique_ptr<kd_tree<double>> const &tree) {
+    ScopedTimer timer("balance_factor");
+
     size_t sum = 0;
     size_t sum_sq = 0;
     size_t count = 0;
@@ -115,33 +122,73 @@ std::pair<double, double> balance_factor(std::unique_ptr<kd_tree<double>> const 
     return std::make_pair(m, stdev);
 }
 
-std::pair<double, double> tree_error(std::unique_ptr<kd_tree<double>> const &tree,
-        const std::function<double(double x, double y, double z)> &func,
-        size_t samples = 101) {
-    double sum = 0.;
-    double max_err = 0.;
+std::vector<Vector_3> make_grid(size_t samples_per_axis) {
+    ScopedTimer timer("make_grid");
+
+    std::vector<Vector_3> positions;
+    positions.reserve(samples_per_axis * samples_per_axis * samples_per_axis);
+
+    std::pair<double, double> x_range(-1,1);
+    std::pair<double, double> y_range(-1,1);
+    std::pair<double, double> z_range(-1,1);
+
+    for (size_t i = 0; i < samples_per_axis * samples_per_axis * samples_per_axis; i++) {
+        size_t i_x = i / (samples_per_axis * samples_per_axis);
+        size_t i_y = (i / samples_per_axis) % samples_per_axis;
+        size_t i_z = i % samples_per_axis;
+
+        double x = x_range.first + (1. * i_x / (samples_per_axis - 1)) * (x_range.second - x_range.first);
+        double y = y_range.first + (1. * i_y / (samples_per_axis - 1)) * (y_range.second - y_range.first);
+        double z = z_range.first + (1. * i_z / (samples_per_axis - 1)) * (z_range.second - z_range.first);
+
+        positions.emplace_back(x, y, z);
+    }
+
+    return positions;
+}
+
+double measure_average_access_time_us(const std::unique_ptr<kd_tree<double>> &tree,
+                                      const std::vector<Vector_3> &positions,
+                                      std::vector<double> &out_approximate_values) {
+    ScopedTimer timer("measure_average_access_time_us");
+
+    constexpr size_t REPS = 100;
+
+    double total_time_s = 0.0;
+    out_approximate_values.clear();
+    out_approximate_values.resize(positions.size());
 
     {
-        std::pair<double, double> x_range(-1,1);
-        std::pair<double, double> y_range(-1,1);
-        std::pair<double, double> z_range(-1,1);
+        ScopedTimer timer([&total_time_s](double time_s) { total_time_s = time_s; });
 
-        for (size_t i = 0; i < samples * samples * samples; i++) {
-            size_t i_x = i / (samples * samples);
-            size_t i_y = (i / samples) % samples;
-            size_t i_z = i % samples;
-
-            double x = x_range.first + (1. * i_x / (samples - 1)) * (x_range.second - x_range.first);
-            double y = y_range.first + (1. * i_y / (samples - 1)) * (y_range.second - y_range.first);
-            double z = z_range.first + (1. * i_z / (samples - 1)) * (z_range.second - z_range.first);
-
-            double err = std::abs(func(x,y,z) - tree->value_at(x,y,z));
-            if (err > max_err) max_err = err;
-            sum += err;
+        for (size_t rep = 0; rep < REPS; ++rep) {
+            for (size_t i = 0; i < positions.size(); ++i) {
+                const Vector_3 &p = positions[i];
+                out_approximate_values[i] = tree->value_at(p.x(), p.y(), p.z());
+            }
         }
     }
 
-    double m = 1. * sum / samples / samples / samples;
+    return total_time_s * 1000000.0 / (double)(positions.size() * REPS);
+}
+
+std::pair<double, double> tree_error(const std::function<double(double x, double y, double z)> &func,
+                                     const std::vector<Vector_3> &positions,
+                                     const std::vector<double> approximate_values) {
+    assert(positions.size() == approximate_values.size());
+    ScopedTimer timer("tree_error");
+
+    double sum = 0.;
+    double max_err = 0.;
+
+    for (size_t i = 0; i < positions.size(); ++i) {
+        const Vector_3& p = positions[i];
+        double err = std::abs(func(p.x(), p.y(), p.z()) - approximate_values[i]);
+        if (err > max_err) max_err = err;
+        sum += err;
+    }
+
+    double m = 1. * sum / (double)positions.size();
 
     return std::make_pair(max_err, m);
 }
@@ -219,8 +266,9 @@ int main(int argc,
     Bbox_3 kd_tree_box = {-1, -1, -1, 1, 1, 1};
 
     std::vector<double> tolerance = {1, .9, .8, .7, .6, 0.5, 0.4, 0.3, 0.2};
+    constexpr size_t GRID_POINTS_PER_AXIS = 101;
 
-    fprintf(stderr, "splitter build_time_s fun_i tolerance node_count balance.first balance.second error.first error.second\n");
+    fprintf(stderr, "splitter build_time_s access_time_us.mean fun_i tolerance node_count balance.mean balance.stdev error.max error.mean\n");
     for (size_t fun_i = from; fun_i <= to; fun_i++) {
         Function3D<double> fun = get_function(fun_i);
         std::for_each(tolerance.begin(), tolerance.end(), [&](const double tolerance) {
@@ -235,18 +283,21 @@ int main(int argc,
 
             size_t node_count = count_nodes(tree);
             std::pair<double, double> balance = balance_factor(tree);
-            std::pair<double, double> error = tree_error(tree, fun);
+            std::vector<Vector_3> grid = make_grid(GRID_POINTS_PER_AXIS);
+            std::vector<double> approximate_values;
+            double average_access_time_us = measure_average_access_time_us(tree, grid, approximate_values);
+            std::pair<double, double> error = tree_error(fun, grid, approximate_values);
 
-            printf("half %f %ld %f %ld %f %f %f %f\n",
-                build_time_s,
+            printf("half %ld %f %f %f %ld %f %f %f %f\n",
                 fun_i,
                 tolerance,
+                build_time_s,
+                average_access_time_us,
                 node_count,
                 balance.first,
                 balance.second,
                 error.first,
                 error.second);
-
 
             {
                 ScopedTimer timer([&build_time_s](double time_s) { build_time_s = time_s; });
@@ -257,12 +308,14 @@ int main(int argc,
 
             node_count = count_nodes(tree);
             balance = balance_factor(tree);
-            error = tree_error(tree, fun);
+            average_access_time_us = measure_average_access_time_us(tree, grid, approximate_values);
+            error = tree_error(fun, grid, approximate_values);
 
-            printf("grad %f %ld %f %ld %f %f %f %f\n",
-                build_time_s,
+            printf("grad %ld %f %f %f %ld %f %f %f %f\n",
                 fun_i,
                 tolerance,
+                build_time_s,
+                average_access_time_us,
                 node_count,
                 balance.first,
                 balance.second,
