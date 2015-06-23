@@ -3,6 +3,11 @@
 #include <string>
 #include <cmath>
 
+// CGAL assertions fail under valgrind, disable them for debugging
+#ifdef _DEBUG
+#   define CGAL_NO_ASSERTIONS
+#endif
+
 #include <CGAL/squared_distance_3.h>
 #include <CGAL/Point_3.h>
 #include <CGAL/Line_3.h>
@@ -11,11 +16,6 @@
 #include <functional>
 #include <memory>
 #include <cassert>
-
-// CGAL assertions fail under valgrind, disable them for debugging
-#ifdef _DEBUG
-#   define CGAL_NO_ASSERTIONS
-#endif
 
 #include <CGAL/Cartesian.h>
 #include <CGAL/Vector_3.h>
