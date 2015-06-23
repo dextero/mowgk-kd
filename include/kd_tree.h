@@ -271,6 +271,7 @@ struct gradient_box_splitter
                     return ind(j,k,i);
             }
             assert(!"unreachable");
+            return (size_t)-1;
         };
 
         double sum_half = 0;

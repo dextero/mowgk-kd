@@ -49,6 +49,7 @@ if(WITH_VISUALIZER)
 endif()
 
 if(WITH_BENCHMARK)
+    set(CMAKE_BUILD_TYPE Release)
     include_directories(${ROOT_DIR}/include)
     find_sources(HEADERS ${ROOT_DIR}/include ".h" "src")
     find_sources(CXX_SOURCES ${ROOT_DIR}/benchmark ".cpp" "src")

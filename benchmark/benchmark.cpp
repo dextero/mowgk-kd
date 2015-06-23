@@ -265,7 +265,7 @@ int main(int argc,
     // volume represented by the tree
     Bbox_3 kd_tree_box = {-1, -1, -1, 1, 1, 1};
 
-    std::vector<double> tolerance = {1, .9, .8, .7, .6, 0.5, 0.4, 0.3, 0.2};
+    std::vector<double> tolerance = {1, .9, .8, .7, .6, 0.5, 0.4, 0.3, 0.2, 0.1};
     constexpr size_t GRID_POINTS_PER_AXIS = 101;
 
     fprintf(stderr, "splitter build_time_s access_time_us.mean fun_i tolerance node_count balance.mean balance.stdev error.max error.mean\n");
