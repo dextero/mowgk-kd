@@ -130,6 +130,47 @@
     \label{fig:build_time}
 \end{figure}
 
-\printindex
+The kd-tree build was tested in the domain of $\mathbf{D} = [-1,\,1] \times [-1,\,1] \times [-1,\,1]$.
+The tests were designed to measure the quality of the created tree as well as performance of its creation.
 
-\end{document}
+\subsection{Test functions}
+
+The tests were performed for 4 different test functions:
+\begin{enumerate}
+    \item \textbf{3DGaussian} $f(x,y,z) = e^{\frac{x^2+y^2+z^2}{2 \cdot 0.1^2}}$,
+    \item \textbf{Squared Distance To Line} the reference
+        line passes through points $(-1,-1,-0.5)$ and $(0.5, 1, 0)$,
+    \item \textbf{Linear Distance From 3 Points} is a mean of distances from points
+        $(0.5, 0.5, 0.5)$, $(0.5, 0.5, -0.5)$ and $(0,0,0)$,
+    \item \textbf{Schwefel Function} $f(x,y,z) = \sum\limits_{x_i \in \{ x, y, z \} } { - x_i \sin{\sqrt{500 |x_i|}}}$ 
+        \footnote{\url{http://www.geatbx.com/docu/fcnindex-01.html\#P150_6749}}
+\end{enumerate}
+
+All of the functions were assumed to be analysed only in the domain of $\mathbf{D}$.
+
+\subsection{Test design}
+
+The building process was analysed for each of the defined function.
+Each function was tested with a number of accuracies,
+i.e. $\{1.0,\, 0.9,\, 0.8,\, 0.7,\, 0.6,\, 0.5,\, 0.4,\, 0.3,\, 0.2,\, 0.1\}$,
+meaning the maximal difference between kd-tree's output value and the actual
+output of the function (error).
+Both methods of splitting the boxes were tested, \textbf{half\_box\_splitter}
+and \textbf{gradient\_box\_splitter}.
+
+For each case, following quantities were measured.
+\begin{itemize}
+    \item \textbf{average access time} a uniform grid of points in the
+        $\mathbf{D}$ is created and for each point and access is performed, the
+        procedure is repeated 100 times for more meaningful results, see Figure~\ref{fig:access_time}
+    \item \textbf{balance factor} depths of all the leaves are collected, mean
+        value and standard deviation of the result is returned. The quotient of
+        these values gives an appropriate measurement of the tree's
+        unbalancing, see Figure~\ref{fig:balance_mean}
+    \item \textbf{node count} number of nodes in the kd-tree, see Figure~\ref{fig:nodes_count}
+    \item \textbf{error} mean and maximum value of difference between the
+        kd-tree's approximation and the actual value of the function, see Figure~\ref{fig:error}
+    \item \textbf{build time}, see Figure~\ref{fig:build_time}
+\end{itemize}
+
+
